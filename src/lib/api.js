@@ -1,7 +1,7 @@
 import axios from 'axios';
 
 export const API_BASE_URL = (
-  process.env.NEXT_PUBLIC_API_URL || 'https://api.management.phidimservice.com.np'
+  process.env.NEXT_PUBLIC_API_URL || '/api'
 ).replace(/\/$/, '');
 
 const api = axios.create({

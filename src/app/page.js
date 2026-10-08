@@ -3,10 +3,9 @@
 import { useState } from 'react';
 import GoogleLoginButton from "@/components/GoogleLoginButton";
 import { useRouter } from 'next/navigation';
-import axios from 'axios';
+import api from '@/lib/api';
 import { Noto_Sans } from 'next/font/google';
 import toast from 'react-hot-toast';
-import { API_BASE_URL } from '@/lib/api';
 
 const notoSans = Noto_Sans({
   subsets: ['latin'],
@@ -24,10 +23,16 @@ export default function LoginPage() {
   const login_user = async () => {
     try {
       const data = { email, password };
-      const url = `${API_BASE_URL}/auth/login`;
-      const res = await axios.post(url, data, { withCredentials: true });
+      const res = await api.post('/auth/login', data);
 
       const authUser = res.data?.data?.user || res.data?.user;
+      const token = res.data?.token || res.data?.data?.token || res.data?.jwt;
+      if (token) {
+        localStorage.setItem('auth_token', token);
+        document.cookie = `jwt=${token}; path=/; SameSite=Lax`;
+      } else {
+        document.cookie = `jwt=true; path=/; SameSite=Lax`;
+      }
       if (authUser) {
         localStorage.setItem('auth_user', JSON.stringify(authUser));
       }

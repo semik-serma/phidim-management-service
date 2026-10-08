@@ -1,9 +1,8 @@
 'use client';
 
 import React, { useState } from 'react';
-import axios from 'axios';
 import toast from 'react-hot-toast';
-import { API_BASE_URL } from '@/lib/api';
+import api from '@/lib/api';
 import {
   FiX,
   FiShare2,
@@ -25,11 +24,7 @@ export default function ShareBillModal({ bill, onClose }) {
   const handleGenerateLink = async () => {
     try {
       setLoading(true);
-      const res = await axios.post(
-        `${API_BASE_URL}/bills/bill/${bill._id}/share`,
-        { expiryDays },
-        { withCredentials: true }
-      );
+      const res = await api.post(`/bills/bill/${bill._id}/share`, { expiryDays });
 
       if (res.data?.success) {
         setShareData(res.data.data);
@@ -63,8 +58,8 @@ export default function ShareBillModal({ bill, onClose }) {
     try {
       setDownloading(true);
       const token = shareData?.shareToken;
-      const url = token ? `${API_BASE_URL}/bills/shared/${token}/export` : `${API_BASE_URL}/bills/export/excel?search=${bill.bill_no || ''}`;
-      const res = await axios.get(url, { responseType: 'blob', withCredentials: true });
+      const url = token ? `/bills/shared/${token}/export` : `/bills/export/excel?search=${bill.bill_no || ''}`;
+      const res = await api.get(url, { responseType: 'blob' });
       const blob = new Blob([res.data], {
         type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
       });

@@ -1,8 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import axios from 'axios';
-import { API_BASE_URL } from '@/lib/api';
+import api from '@/lib/api';
 import {
   FiX,
   FiShield,
@@ -22,7 +21,7 @@ export default function AdminLogsModal({ onClose }) {
     try {
       setLoading(true);
       setError(null);
-      const res = await axios.get(`${API_BASE_URL}/admin/logs`, { withCredentials: true });
+      const res = await api.get('/admin/logs');
       if (res.data?.success) {
         setLogs(res.data.data || []);
       } else {

@@ -1,9 +1,8 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import axios from 'axios';
 import { useRouter } from 'next/navigation';
-import { API_BASE_URL } from '@/lib/api';
+import api from '@/lib/api';
 
 export function useAuth({ redirectIfUnauthenticated = true } = {}) {
   const [user, setUser] = useState(() => {
@@ -23,7 +22,7 @@ export function useAuth({ redirectIfUnauthenticated = true } = {}) {
   useEffect(() => {
     const checkAuth = async () => {
       try {
-        const res = await axios.get(`${API_BASE_URL}/auth/me`, { withCredentials: true });
+        const res = await api.get('/auth/me');
         const fetchedUser = res.data?.data?.user || res.data?.user || null;
         setUser(fetchedUser);
         if (fetchedUser && typeof window !== 'undefined') {
@@ -33,6 +32,8 @@ export function useAuth({ redirectIfUnauthenticated = true } = {}) {
         setUser(null);
         if (typeof window !== 'undefined') {
           localStorage.removeItem('auth_user');
+          localStorage.removeItem('auth_token');
+          document.cookie = 'jwt=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Lax';
         }
         if (redirectIfUnauthenticated) {
           router.push('/');
@@ -47,28 +48,22 @@ export function useAuth({ redirectIfUnauthenticated = true } = {}) {
 
   const logout = async () => {
     try {
-      await axios.post(`${API_BASE_URL}/auth/logout`, {}, { withCredentials: true });
-      setUser(null);
-      if (typeof window !== 'undefined') {
-        localStorage.removeItem('auth_user');
-      }
-      router.push('/');
+      await api.post('/auth/logout');
     } catch (err) {
       console.error('logout failed:', err);
+    } finally {
       setUser(null);
       if (typeof window !== 'undefined') {
         localStorage.removeItem('auth_user');
+        localStorage.removeItem('auth_token');
+        document.cookie = 'jwt=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Lax';
       }
       router.push('/');
     }
   };
 
   const updatePicture = async (pictureUrl) => {
-    const res = await axios.put(
-      `${API_BASE_URL}/auth/picture`,
-      { picture: pictureUrl },
-      { withCredentials: true }
-    );
+    const res = await api.put('/auth/picture', { picture: pictureUrl });
     if (res.data?.data?.user) {
       setUser(res.data.data.user);
       if (typeof window !== 'undefined') {

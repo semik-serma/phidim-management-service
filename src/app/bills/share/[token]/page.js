@@ -2,8 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { useParams } from 'next/navigation';
-import axios from 'axios';
-import { API_BASE_URL } from '@/lib/api';
+import api from '@/lib/api';
 import {
   FiFileText,
   FiDownload,
@@ -29,7 +28,7 @@ export default function SharedBillPage() {
       try {
         setLoading(true);
         setError(null);
-        const res = await axios.get(`${API_BASE_URL}/bills/shared/${token}`);
+        const res = await api.get(`/bills/shared/${token}`);
         if (res.data?.success) {
           setBill(res.data.data);
         } else {
@@ -52,7 +51,7 @@ export default function SharedBillPage() {
   const handleDownloadExcel = async () => {
     try {
       setDownloading(true);
-      const res = await axios.get(`${API_BASE_URL}/bills/shared/${token}/export`, {
+      const res = await api.get(`/bills/shared/${token}/export`, {
         responseType: 'blob',
       });
       const blob = new Blob([res.data], {

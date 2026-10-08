@@ -2,11 +2,10 @@
 
 import { GoogleLogin } from "@react-oauth/google";
 import { FaGoogle } from "react-icons/fa";
-import axios from "axios";
+import api from "@/lib/api";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import toast from "react-hot-toast";
-import { API_BASE_URL } from "@/lib/api";
 
 const GoogleLoginButton = () => {
   const router = useRouter();
@@ -21,14 +20,18 @@ const GoogleLoginButton = () => {
 
   const handleSuccess = async (credentialResponse) => {
     try {
-      const url = `${API_BASE_URL}/auth/google`;
-      const res = await axios.post(
-        url,
-        { token: credentialResponse.credential },
-        { withCredentials: true }
-      );
+      const res = await api.post('/auth/google', {
+        token: credentialResponse.credential,
+      });
 
       const authUser = res.data?.data?.user || res.data?.user;
+      const token = res.data?.token || res.data?.data?.token || res.data?.jwt;
+      if (token) {
+        localStorage.setItem('auth_token', token);
+        document.cookie = `jwt=${token}; path=/; SameSite=Lax`;
+      } else {
+        document.cookie = `jwt=true; path=/; SameSite=Lax`;
+      }
       if (authUser) {
         localStorage.setItem('auth_user', JSON.stringify(authUser));
       }

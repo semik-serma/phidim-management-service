@@ -379,6 +379,14 @@ export default function DashboardPage() {
               + Add Note
             </button>
 
+            <Link
+              href="/products"
+              className="rounded-xl border-2 border-[#072A44] bg-white px-3.5 py-2 text-sm font-bold text-[#072A44] hover:bg-slate-50 transition cursor-pointer flex items-center gap-1.5"
+              title="Manage Products, Inventory & Categories"
+            >
+              <FiPackage className="h-4 w-4 text-[#0B5ED7]" /> Inventory & Categories
+            </Link>
+
             <button
               type="button"
               onClick={() => setIsProfileOpen(true)}

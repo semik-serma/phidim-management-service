@@ -11,6 +11,13 @@ export default function PrintBillModal({ bill, isOpen, onClose }) {
     if (bill) {
       setCustomTime(extractBillTime(bill));
     }
+    // Preload logo and signature images to ensure instant, glitch-free print rendering
+    if (typeof window !== 'undefined') {
+      const img1 = new Image();
+      img1.src = '/logo.png?v=4';
+      const img2 = new Image();
+      img2.src = '/signature_original.png?v=4';
+    }
   }, [bill, isOpen]);
 
   if (!isOpen || !bill) return null;
@@ -19,12 +26,17 @@ export default function PrintBillModal({ bill, isOpen, onClose }) {
     if (typeof document !== 'undefined') {
       document.body.classList.add('bill-print-active');
     }
-    window.print();
-    setTimeout(() => {
-      if (typeof document !== 'undefined') {
-        document.body.classList.remove('bill-print-active');
-      }
-    }, 1000);
+    // Allow DOM reflow and image layout calculations to complete before opening the print dialog
+    requestAnimationFrame(() => {
+      setTimeout(() => {
+        window.print();
+        setTimeout(() => {
+          if (typeof document !== 'undefined') {
+            document.body.classList.remove('bill-print-active');
+          }
+        }, 800);
+      }, 150);
+    });
   };
 
   const handleSetCurrentTime = () => {

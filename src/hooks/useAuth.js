@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import axios from 'axios';
 import { useRouter } from 'next/navigation';
+import { API_BASE_URL } from '@/lib/api';
 
 export function useAuth({ redirectIfUnauthenticated = true } = {}) {
   const [user, setUser] = useState(() => {
@@ -22,7 +23,7 @@ export function useAuth({ redirectIfUnauthenticated = true } = {}) {
   useEffect(() => {
     const checkAuth = async () => {
       try {
-        const res = await axios.get('/api/auth/me', { withCredentials: true });
+        const res = await axios.get(`${API_BASE_URL}/auth/me`, { withCredentials: true });
         const fetchedUser = res.data?.data?.user || res.data?.user || null;
         setUser(fetchedUser);
         if (fetchedUser && typeof window !== 'undefined') {
@@ -46,7 +47,7 @@ export function useAuth({ redirectIfUnauthenticated = true } = {}) {
 
   const logout = async () => {
     try {
-      await axios.post('/api/auth/logout', {}, { withCredentials: true });
+      await axios.post(`${API_BASE_URL}/auth/logout`, {}, { withCredentials: true });
       setUser(null);
       if (typeof window !== 'undefined') {
         localStorage.removeItem('auth_user');
@@ -64,7 +65,7 @@ export function useAuth({ redirectIfUnauthenticated = true } = {}) {
 
   const updatePicture = async (pictureUrl) => {
     const res = await axios.put(
-      '/api/auth/picture',
+      `${API_BASE_URL}/auth/picture`,
       { picture: pictureUrl },
       { withCredentials: true }
     );

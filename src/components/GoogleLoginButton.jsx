@@ -6,6 +6,7 @@ import axios from "axios";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import toast from "react-hot-toast";
+import { API_BASE_URL } from "@/lib/api";
 
 const GoogleLoginButton = () => {
   const router = useRouter();
@@ -20,7 +21,7 @@ const GoogleLoginButton = () => {
 
   const handleSuccess = async (credentialResponse) => {
     try {
-      const url = '/api/auth/google';
+      const url = `${API_BASE_URL}/auth/google`;
       const res = await axios.post(
         url,
         { token: credentialResponse.credential },

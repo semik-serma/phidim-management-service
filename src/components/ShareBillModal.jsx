@@ -3,6 +3,7 @@
 import React, { useState } from 'react';
 import axios from 'axios';
 import toast from 'react-hot-toast';
+import { API_BASE_URL } from '@/lib/api';
 import {
   FiX,
   FiShare2,
@@ -25,7 +26,7 @@ export default function ShareBillModal({ bill, onClose }) {
     try {
       setLoading(true);
       const res = await axios.post(
-        `/api/bills/bill/${bill._id}/share`,
+        `${API_BASE_URL}/bills/bill/${bill._id}/share`,
         { expiryDays },
         { withCredentials: true }
       );
@@ -62,7 +63,7 @@ export default function ShareBillModal({ bill, onClose }) {
     try {
       setDownloading(true);
       const token = shareData?.shareToken;
-      const url = token ? `/api/bills/shared/${token}/export` : `/api/bills/export/excel?search=${bill.bill_no || ''}`;
+      const url = token ? `${API_BASE_URL}/bills/shared/${token}/export` : `${API_BASE_URL}/bills/export/excel?search=${bill.bill_no || ''}`;
       const res = await axios.get(url, { responseType: 'blob', withCredentials: true });
       const blob = new Blob([res.data], {
         type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',

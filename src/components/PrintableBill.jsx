@@ -142,22 +142,26 @@ export function getNepaliDate(adDateVal) {
 
 /**
  * Phidim Service Official Logo
- * Uses /logo.png provided in public folder
+ * Uses /logo.png provided in public folder with anti-glitch print attributes
  */
-export function PhidimBillLogo({ className = 'w-24 h-24 sm:w-28 sm:h-28' }) {
+export function PhidimBillLogo({ className = 'w-24 h-24 sm:w-28 sm:h-28 print:w-20 print:h-20' }) {
   return (
     <img
-      src="/logo.png"
+      src="/logo.png?v=4"
       alt="Phidim Service Logo"
-      className={`${className} object-contain`}
+      width={1254}
+      height={1254}
+      decoding="sync"
       loading="eager"
+      className={`${className} object-contain block`}
+      style={{ aspectRatio: '1 / 1' }}
     />
   );
 }
 
 /**
  * Phidim Blue Rubber Stamp
- * Stamp is already embedded in high resolution in /signature.png
+ * Stamp is already embedded in high resolution in /signature_original.png
  */
 export function PhidimOfficialStamp({ className = 'w-24 h-24' }) {
   return null;
@@ -165,15 +169,19 @@ export function PhidimOfficialStamp({ className = 'w-24 h-24' }) {
 
 /**
  * Authentic Authorized Signature & Stamp
- * Uses /signature.png provided in public folder
+ * Uses /signature_original.png provided in public folder
  */
-export function PhidimAuthorizedSignature({ className = 'w-48 sm:w-52 h-auto print:w-44 print:h-auto' }) {
+export function PhidimAuthorizedSignature({ className = 'w-52 sm:w-60 h-auto print:w-48 print:h-auto' }) {
   return (
     <img
-      src="/signature.png?v=3"
+      src="/signature_original.png?v=4"
       alt="Authorized Signature & Stamp"
-      className={`${className} object-contain`}
+      width={1448}
+      height={1086}
+      decoding="sync"
       loading="eager"
+      className={`${className} object-contain block`}
+      style={{ aspectRatio: '1448 / 1086' }}
     />
   );
 }
@@ -482,8 +490,8 @@ export default function PrintableBill({ bill }) {
           </div>
 
           {/* Right: Official Stamp & Authorized Signature */}
-          <div className="flex flex-col items-center justify-end">
-            <PhidimAuthorizedSignature className="w-48 sm:w-52 h-auto print:w-44 print:h-auto" />
+          <div className="flex flex-col items-center justify-end shrink-0">
+            <PhidimAuthorizedSignature className="w-52 sm:w-60 h-auto print:w-48 print:h-auto" />
           </div>
         </div>
 

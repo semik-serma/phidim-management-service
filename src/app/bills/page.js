@@ -966,7 +966,12 @@ export default function BillsPage() {
       <CreateBillModal
         isOpen={isCreateOpen}
         onClose={() => setIsCreateOpen(false)}
-        onSuccess={loadBills}
+        onSuccess={(createdBill, autoPrint) => {
+          loadBills();
+          if (autoPrint && createdBill) {
+            setPrintingBill(createdBill);
+          }
+        }}
       />
 
       {/* VIEW BILL DETAILS MODAL */}

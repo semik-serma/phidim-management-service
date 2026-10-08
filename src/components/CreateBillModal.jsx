@@ -14,6 +14,7 @@ import {
   FiPackage,
   FiShoppingBag,
   FiSearch,
+  FiPrinter,
 } from 'react-icons/fi';
 import toast from 'react-hot-toast';
 import { createBill } from '@/lib/billApi';
@@ -28,7 +29,7 @@ const QUICK_PROJECT_SUGGESTIONS = [
   '📦 Hardware & Supply',
 ];
 
-export default function CreateBillModal({ isOpen, onClose, onSuccess }) {
+export default function CreateBillModal({ isOpen, onClose, onSuccess, onCreated }) {
   const { user } = useAuth({ redirectIfUnauthenticated: false });
   const activeRole = (user?.role && ['admin', 'staff', 'accountant'].includes(user.role.toLowerCase()))
     ? user.role.toLowerCase()
@@ -49,6 +50,7 @@ export default function CreateBillModal({ isOpen, onClose, onSuccess }) {
   const [showInventoryDropdownIdx, setShowInventoryDropdownIdx] = useState(null);
   const [productSearch, setProductSearch] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [submitAction, setSubmitAction] = useState('save');
   const [error, setError] = useState('');
 
   useEffect(() => {
@@ -194,7 +196,8 @@ export default function CreateBillModal({ isOpen, onClose, onSuccess }) {
         total_amount: grandTotal,
       };
 
-      await createBill(payload);
+      const res = await createBill(payload);
+      const createdBill = res?.data || res?.bill || res;
 
       // Reset form
       const nowReset = new Date();
@@ -215,7 +218,8 @@ export default function CreateBillModal({ isOpen, onClose, onSuccess }) {
       });
 
       toast.success('Bill created successfully!');
-      if (onSuccess) onSuccess();
+      if (onSuccess) onSuccess(createdBill, submitAction === 'print');
+      if (onCreated) onCreated(createdBill);
       onClose();
     } catch (err) {
       const msg =
@@ -734,6 +738,39 @@ export default function CreateBillModal({ isOpen, onClose, onSuccess }) {
                 </div>
               </div>
 
+              {/* Official Seal & Stamp Verification Banner */}
+              <div className="rounded-xl border border-blue-100 bg-[#F4F8FD] p-3 flex flex-wrap items-center justify-between gap-3">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-10 h-10 rounded-lg bg-white border border-blue-200 p-1 flex items-center justify-center shrink-0">
+                    <img
+                      src="/logo.png?v=4"
+                      alt="Phidim Service Logo"
+                      className="w-full h-full object-contain"
+                      width={1254}
+                      height={1254}
+                    />
+                  </div>
+                  <div>
+                    <p className="text-xs font-bold text-[#072A44] flex items-center gap-1.5">
+                      <span>Official Stamp & Authorized Signature</span>
+                      <span className="text-[10px] font-semibold bg-emerald-100 text-emerald-800 px-1.5 py-0.5 rounded">Auto Attached</span>
+                    </p>
+                    <p className="text-[11px] text-slate-500">
+                      Every service bill automatically carries the official Phidim stamp (Pokhara-6, Prithvichok) & authorized signature.
+                    </p>
+                  </div>
+                </div>
+                <div className="shrink-0 bg-white border border-slate-200 rounded-lg p-1 shadow-2xs">
+                  <img
+                    src="/signature_original.png?v=4"
+                    alt="Authorized Signature & Stamp"
+                    className="h-10 w-auto object-contain block"
+                    width={1448}
+                    height={1086}
+                  />
+                </div>
+              </div>
+
               {/* Datalist for fast browser native autocomplete */}
               <datalist id="inventory-products-list">
                 {inventoryProducts.map((p) => (
@@ -745,28 +782,38 @@ export default function CreateBillModal({ isOpen, onClose, onSuccess }) {
             </div>
           </div>
 
-          <div className="flex items-center justify-end gap-3 pt-3 border-t border-[#E1EAF6] shrink-0">
+          <div className="flex flex-wrap items-center justify-end gap-2.5 pt-3 border-t border-[#E1EAF6] shrink-0">
             <button
               type="button"
               onClick={onClose}
-              className="rounded-xl border-2 border-[#CFE0F5] bg-white px-5 py-2.5 text-xs font-bold text-slate-700 hover:bg-slate-50 transition cursor-pointer"
+              className="rounded-xl border-2 border-[#CFE0F5] bg-white px-4 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50 transition cursor-pointer"
             >
               Cancel
             </button>
             <button
               type="submit"
               disabled={submitting}
-              className="flex items-center gap-2 rounded-xl bg-[#0B5ED7] px-6 py-2.5 text-xs font-bold text-white shadow-lg shadow-[#0B5ED7]/30 hover:bg-[#0A4FB3] transition cursor-pointer disabled:opacity-60"
+              onClick={() => setSubmitAction('save')}
+              className="flex items-center gap-1.5 rounded-xl border border-[#0B5ED7] bg-white px-4 py-2 text-xs font-bold text-[#0B5ED7] shadow-xs hover:bg-blue-50 transition cursor-pointer disabled:opacity-60"
             >
-              {submitting ? (
+              <FiCheckCircle className="h-4 w-4" />
+              Create Bill
+            </button>
+            <button
+              type="submit"
+              disabled={submitting}
+              onClick={() => setSubmitAction('print')}
+              className="flex items-center gap-1.5 rounded-xl bg-[#0B5ED7] px-5 py-2 text-xs font-bold text-white shadow-lg shadow-[#0B5ED7]/30 hover:bg-[#0A4FB3] transition cursor-pointer disabled:opacity-60"
+            >
+              {submitting && submitAction === 'print' ? (
                 <>
                   <FiRefreshCw className="h-4 w-4 animate-spin" />
-                  Creating Bill...
+                  Creating & Printing...
                 </>
               ) : (
                 <>
-                  <FiCheckCircle className="h-4 w-4" />
-                  Create Bill
+                  <FiPrinter className="h-4 w-4" />
+                  Create & Print Bill
                 </>
               )}
             </button>

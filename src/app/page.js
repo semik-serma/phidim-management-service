@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import axios from 'axios';
 import { Noto_Sans } from 'next/font/google';
 import toast from 'react-hot-toast';
+import { API_BASE_URL } from '@/lib/api';
 
 const notoSans = Noto_Sans({
   subsets: ['latin'],
@@ -23,7 +24,7 @@ export default function LoginPage() {
   const login_user = async () => {
     try {
       const data = { email, password };
-      const url = '/api/auth/login';
+      const url = `${API_BASE_URL}/auth/login`;
       const res = await axios.post(url, data, { withCredentials: true });
 
       const authUser = res.data?.data?.user || res.data?.user;

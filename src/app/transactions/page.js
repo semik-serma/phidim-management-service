@@ -1593,7 +1593,16 @@ export default function TransactionsPage() {
           {/* Print Header with Official Logo */}
           <div className="flex items-start justify-between border-b-2 border-slate-900 pb-3 mb-5">
             <div className="flex items-center gap-3">
-              <img src="/logo.png" alt="Phidim Service Logo" className="w-16 h-16 object-contain" />
+              <img
+                src="/logo.png?v=4"
+                alt="Phidim Service Logo"
+                width={1254}
+                height={1254}
+                decoding="sync"
+                loading="eager"
+                className="w-16 h-16 object-contain block"
+                style={{ aspectRatio: '1 / 1' }}
+              />
               <div>
                 <h1 className="text-2xl font-black tracking-tight text-[#072A44] leading-tight">
                   phidim service and supplier
@@ -1717,7 +1726,16 @@ export default function TransactionsPage() {
               <p className="text-[11px] text-slate-400 italic">This is a system generated official transaction statement.</p>
             </div>
             <div className="flex flex-col items-center">
-              <img src="/signature.png?v=3" alt="Authorized Signature & Stamp" className="w-44 h-auto object-contain" />
+              <img
+                src="/signature_original.png?v=4"
+                alt="Authorized Signature & Stamp"
+                width={1448}
+                height={1086}
+                decoding="sync"
+                loading="eager"
+                className="w-48 h-auto object-contain block"
+                style={{ aspectRatio: '1448 / 1086' }}
+              />
             </div>
           </div>
         </section>

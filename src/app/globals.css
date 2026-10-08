@@ -45,6 +45,14 @@ body {
     print-color-adjust: exact !important;
   }
 
+  /* Anti-glitch image print preservation */
+  img {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+    image-rendering: auto !important;
+    max-width: 100% !important;
+  }
+
   /* Utility print display helpers */
   .no-print,
   .print-hidden,

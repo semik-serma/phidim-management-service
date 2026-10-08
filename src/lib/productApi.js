@@ -1,12 +1,4 @@
-import axios from 'axios';
-
-const api = axios.create({
-  baseURL: '/api',
-  withCredentials: true,
-  headers: {
-    'Content-Type': 'application/json',
-  },
-});
+import api from './api';
 
 function unwrap(response) {
   if (response && response.data !== undefined) {
@@ -325,5 +317,97 @@ export async function adjustStock(id, data) {
     });
     saveLocalProducts(next);
     return { success: true };
+  }
+}
+
+const FALLBACK_CATEGORIES_KEY = 'phidim_inventory_categories';
+const DEFAULT_CATEGORIES = [
+  'CCTV',
+  'Networking',
+  'Electrical',
+  'Plumbing',
+  'Computer',
+  'Service',
+  'General',
+];
+
+/**
+ * Fetch all categories (from database with fallback)
+ */
+export async function getCategories() {
+  try {
+    const response = await api.get('/products/categories');
+    const data = unwrap(response);
+    if (Array.isArray(data) && data.length > 0) {
+      if (typeof window !== 'undefined') {
+        localStorage.setItem(FALLBACK_CATEGORIES_KEY, JSON.stringify(data));
+      }
+      return data;
+    }
+  } catch (error) {
+    console.warn('Failed to fetch categories from server, using local fallback:', error);
+  }
+
+  // Fallback to local storage or defaults
+  if (typeof window !== 'undefined') {
+    try {
+      const stored = localStorage.getItem(FALLBACK_CATEGORIES_KEY);
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch {}
+  }
+  return DEFAULT_CATEGORIES.map((cat, idx) => ({
+    _id: `cat-${idx}`,
+    name: cat,
+    description: `${cat} category`,
+  }));
+}
+
+/**
+ * Create a new category (Admin only)
+ */
+export async function createCategory(categoryData) {
+  try {
+    const response = await api.post('/products/categories', categoryData);
+    const newCat = unwrap(response);
+    if (typeof window !== 'undefined') {
+      try {
+        const stored = localStorage.getItem(FALLBACK_CATEGORIES_KEY);
+        const list = stored ? JSON.parse(stored) : [];
+        localStorage.setItem(FALLBACK_CATEGORIES_KEY, JSON.stringify([...list, newCat]));
+      } catch {}
+    }
+    return newCat;
+  } catch (error) {
+    const errMsg = error.response?.data?.message || error.message || 'Failed to create category';
+    throw new Error(errMsg);
+  }
+}
+
+/**
+ * Delete a category (Admin only)
+ */
+export async function deleteCategory(id) {
+  try {
+    const response = await api.delete(`/products/categories/${id}`);
+    const resData = unwrap(response);
+    if (typeof window !== 'undefined') {
+      try {
+        const stored = localStorage.getItem(FALLBACK_CATEGORIES_KEY);
+        if (stored) {
+          const list = JSON.parse(stored);
+          localStorage.setItem(
+            FALLBACK_CATEGORIES_KEY,
+            JSON.stringify(list.filter((c) => (c._id || c.id) !== id))
+          );
+        }
+      } catch {}
+    }
+    return resData;
+  } catch (error) {
+    const errMsg = error.response?.data?.message || error.message || 'Failed to delete category';
+    throw new Error(errMsg);
   }
 }

@@ -27,21 +27,90 @@ body {
 
 @media print {
   @page {
-    size: auto;
-    margin: 10mm;
+    size: A4 portrait;
+    margin: 6mm 8mm;
   }
+  
+  html,
   body {
     background: #ffffff !important;
     color: #000000 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    width: 100% !important;
+    height: auto !important;
+    min-height: 0 !important;
+    overflow: visible !important;
     -webkit-print-color-adjust: exact !important;
     print-color-adjust: exact !important;
   }
+
+  /* Utility print display helpers */
+  .no-print,
   .print-hidden,
   .print\:hidden {
     display: none !important;
   }
+
   .print-only,
   .print\:block {
     display: block !important;
+  }
+
+  .print\:flex {
+    display: flex !important;
+  }
+
+  /* When printing an isolated bill modal, hide background app chrome */
+  body.bill-print-active aside,
+  body.bill-print-active header,
+  body.bill-print-active main,
+  body.bill-print-active nav,
+  body:has(.bill-modal-backdrop) aside,
+  body:has(.bill-modal-backdrop) header,
+  body:has(.bill-modal-backdrop) main:not(:has(.printable-bill-wrapper)),
+  body:has(.bill-modal-backdrop) nav {
+    display: none !important;
+  }
+
+  /* Modal print adjustments: render modal content directly on the page */
+  .bill-modal-backdrop {
+    position: static !important;
+    background: #ffffff !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    overflow: visible !important;
+    max-height: none !important;
+    height: auto !important;
+    box-shadow: none !important;
+    border: none !important;
+  }
+
+  .bill-modal-card {
+    position: static !important;
+    border: none !important;
+    box-shadow: none !important;
+    border-radius: 0 !important;
+    background: #ffffff !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    max-height: none !important;
+    overflow: visible !important;
+    width: 100% !important;
+    max-width: 100% !important;
+  }
+
+  /* Printable bill page sizing and break prevention */
+  .printable-bill-wrapper {
+    position: static !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    margin: 0 auto !important;
+    padding: 0 !important;
+    background: #ffffff !important;
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+    page-break-after: avoid !important;
+    break-after: avoid !important;
   }
 }

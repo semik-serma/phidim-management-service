@@ -27,6 +27,11 @@ const GoogleLoginButton = () => {
         { withCredentials: true }
       );
 
+      const authUser = res.data?.data?.user || res.data?.user;
+      if (authUser) {
+        localStorage.setItem('auth_user', JSON.stringify(authUser));
+      }
+
       console.log("google login response:", res.data);
       toast.success("Signed in with Google successfully!");
       router.push("/dashboard");

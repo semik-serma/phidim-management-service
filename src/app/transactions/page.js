@@ -19,6 +19,9 @@ import {
   FiShare2,
   FiDownload,
   FiCalendar,
+  FiAlertCircle,
+  FiBookOpen,
+  FiPackage,
 } from 'react-icons/fi';
 import { useAuth } from '@/hooks/useAuth';
 import toast from 'react-hot-toast';
@@ -31,26 +34,16 @@ import {
 } from '@/lib/transactionApi';
 import UserAvatar from '@/components/UserAvatar';
 import ProfileModal from '@/components/ProfileModal';
+import Sidebar, { MobileNav } from '@/components/Sidebar';
 import CreateBillModal from '@/components/CreateBillModal';
 import CreateTransactionModal from '@/components/CreateTransactionModal';
 import EditTransactionModal from '@/components/EditTransactionModal';
+import PrintBillModal from '@/components/PrintBillModal';
 
 const notoSans = Noto_Sans({
   subsets: ['latin'],
   weight: ['400', '500', '600', '700', '800'],
 });
-
-const NAV = [
-  {
-    title: 'MAIN',
-    items: [
-      { label: 'Dashboard', href: '/dashboard' },
-      { label: 'Bill Entry', href: '/bills' },
-      { label: 'Debit & Credit', href: '/transactions' },
-      { label: 'Notes & Agenda', href: '/notes' },
-    ],
-  },
-];
 
 // Initial demo dataset matching the exact numbers, references and times from Image 2
 const DEMO_TRANSACTIONS = [
@@ -194,6 +187,7 @@ export default function TransactionsPage() {
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [isMakeBillOpen, setIsMakeBillOpen] = useState(false);
   const [editingTransaction, setEditingTransaction] = useState(null);
+  const [printingBill, setPrintingBill] = useState(null);
 
   const [transactions, setTransactions] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -221,6 +215,11 @@ export default function TransactionsPage() {
 
   // Load transactions from API (user-scoped or admin-scoped) or fallback
   const loadData = async () => {
+    const userRole = (user?.role || 'staff').toLowerCase();
+    if (user && userRole !== 'admin' && userRole !== 'accountant') {
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     try {
       // Fetch backend transactions
@@ -518,14 +517,58 @@ export default function TransactionsPage() {
     };
   }, [transactions]);
 
-  // Print function
+  // Print function for transactions statement
   const handlePrint = () => {
     const originalTitle = document.title;
-    document.title = 'PHIDIM SERVICE — Debit & Credit PDF';
+    document.title = 'PHIDIM SERVICE — Debit & Credit Statement';
     window.print();
     setTimeout(() => {
       document.title = originalTitle;
     }, 1000);
+  };
+
+  // Print official Debit or Credit bill / voucher
+  const handlePrintTransactionBill = (item) => {
+    if (!item) return;
+    const isCredit =
+      String(item.transactionType).toLowerCase().includes('credit') ||
+      String(item.transactionType).toLowerCase().includes('in');
+    const billType = isCredit ? 'CREDIT' : 'DEBIT';
+    const numAmount = Number(item.amount || 0);
+    const refStr =
+      item.reference && item.reference !== '—'
+        ? item.reference
+        : `${billType === 'CREDIT' ? 'CR' : 'DR'}-${String(item._id || item.id || Date.now()).slice(-6).toUpperCase()}`;
+
+    const billObj = {
+      _id: item._id || item.id,
+      bill_no: refStr,
+      reference: refStr,
+      title: `${billType} BILL / VOUCHER`,
+      bill_type: `${billType} BILL`,
+      customer_box_title: isCredit ? 'CREDIT / DEPOSITOR DETAILS' : 'DEBIT / BENEFICIARY DETAILS',
+      customer_name: item.account ? `${item.account} (${billType})` : (item.enteredBy || 'Cash Party'),
+      phone_number: item.enteredBy ? `Operator: ${item.enteredBy}` : '—',
+      address: 'Phidim-4, Panchthar',
+      customer_label: 'Party / A/C',
+      phone_label: 'Entered By',
+      address_label: 'Location',
+      bill_date: item.date || item.createdAt || new Date(),
+      bill_time: item.entryTime || '',
+      createdAt: item.createdAt || item.date || new Date(),
+      pan_no: '—',
+      payment_mode: item.account || 'Cash',
+      grand_total: numAmount,
+      items: [
+        {
+          particular: `[${billType}] ${item.description || (isCredit ? 'Cash Inflow / Payment Received' : 'Cash Outflow / Expense Paid')} • A/C: ${item.account || 'Cash'}`,
+          qty: 1,
+          rate: numAmount,
+          total: numAmount,
+        },
+      ],
+    };
+    setPrintingBill(billObj);
   };
 
   // Open PDF in a new tab matching Image 3
@@ -859,10 +902,57 @@ export default function TransactionsPage() {
     }
   };
 
+  const userRole = (user?.role || 'staff').toLowerCase();
+  const isAdmin = userRole === 'admin';
+  const isAccountant = userRole === 'accountant';
+  const canAccessTransactions = isAdmin || isAccountant;
+
   if (authLoading) {
     return (
       <div className={`${notoSans.className} min-h-screen flex items-center justify-center bg-[#F0F4FA]`}>
         <p className="text-base text-slate-500 font-semibold">Loading statement...</p>
+      </div>
+    );
+  }
+  if (!user) return null;
+
+  if (!canAccessTransactions) {
+    return (
+      <div className={`${notoSans.className} min-h-screen flex items-center justify-center bg-[#F0F4FA] p-6 text-[#072A44]`}>
+        <div className="max-w-md w-full bg-white rounded-2xl p-8 shadow-sm border border-[#CFE0F5] text-center">
+          <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-amber-100 text-amber-700">
+            <FiAlertCircle className="h-8 w-8" />
+          </div>
+          <h1 className="text-2xl font-extrabold text-[#072A44]">
+            Access Restricted
+          </h1>
+          <p className="mt-2 text-sm text-slate-600">
+            The Debit & Credit module is reserved exclusively for <strong>Accountants</strong> and <strong>Administrators</strong>.
+          </p>
+          <p className="mt-1 text-xs text-slate-500">
+            Your current assigned role is <span className="font-extrabold uppercase text-[#0B5ED7]">{userRole}</span>. As a staff member, you have access to Bill Entry and Notes.
+          </p>
+          <div className="mt-6 flex flex-col sm:flex-row gap-2.5 justify-center">
+            <Link
+              href="/bills"
+              className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-[#0B5ED7] px-4 py-2.5 text-xs font-bold text-white hover:bg-[#0A4FB3] transition"
+            >
+              <FiFileText className="h-4 w-4" /> Go to Bill Entry
+            </Link>
+            <Link
+              href="/notes"
+              className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-xs font-bold text-slate-700 hover:bg-slate-50 transition"
+            >
+              <FiBookOpen className="h-4 w-4" /> Go to Notes & Agenda
+            </Link>
+            <Link
+              href="/dashboard"
+              className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-xs font-bold text-slate-700 hover:bg-slate-50 transition"
+            >
+              <FiHome className="h-4 w-4" /> Dashboard
+            </Link>
+          </div>
+        </div>
       </div>
     );
   }
@@ -871,81 +961,13 @@ export default function TransactionsPage() {
 
   return (
     <div className={`${notoSans.className} min-h-screen flex print:block bg-[#F0F4FA] print:bg-white text-[#0B1F3A]`}>
-      {/* Sidebar matching Image 1 */}
-      <aside className="print:hidden hidden md:flex w-[215px] shrink-0 flex-col bg-[#072A44] text-white px-3 pt-5 pb-6 sticky top-0 h-screen">
-        <div className="px-3 mb-6">
-          <h1 className="text-lg font-extrabold tracking-wide">PHIDIM SERVICE</h1>
-          <p className="text-[11px] text-blue-200 mt-0.5">Service • Supply • Solutions</p>
-        </div>
-
-        {NAV.map((section) => (
-          <div key={section.title} className="mb-4">
-            <p className="px-3 mb-1.5 text-[11px] font-bold tracking-[0.12em] text-[#7CC0FF]">
-              {section.title}
-            </p>
-            {section.items.map((item) => {
-              const active = item.href === '/transactions';
-              return (
-                <Link
-                  key={item.label}
-                  href={item.href}
-                  className={`block px-3 py-2 rounded-lg text-[15px] font-bold transition mb-1 ${
-                    active
-                      ? 'bg-[#0B5ED7] text-white shadow-xs'
-                      : 'bg-transparent text-blue-100 hover:bg-[#0B5ED7]/60'
-                  }`}
-                >
-                  {item.label}
-                </Link>
-              );
-            })}
-          </div>
-        ))}
-
-        {/* User Profile in Sidebar */}
-        <div className="mt-auto px-1 pt-4 border-t border-white/10">
-          <button
-            type="button"
-            onClick={() => setIsProfileOpen(true)}
-            className="w-full flex items-center gap-2.5 rounded-xl bg-white/5 hover:bg-white/10 p-2.5 text-left transition cursor-pointer group"
-            title="Click to view/update profile"
-          >
-            <UserAvatar user={user} size="sm" showBadge={true} />
-            <div className="min-w-0 flex-1">
-              <p className="truncate text-xs font-bold text-white group-hover:text-[#FFD600] transition">
-                {userName}
-              </p>
-              <p className="truncate text-[10px] text-blue-200">
-                {user?.email || 'Signed in'}
-              </p>
-            </div>
-          </button>
-        </div>
-      </aside>
+      {/* Desktop Sidebar */}
+      <Sidebar user={user} onProfileClick={() => setIsProfileOpen(true)} />
 
       {/* Main Content Area */}
       <div className="flex-1 min-w-0 flex flex-col">
         {/* Mobile Navigation bar */}
-        <div className="print:hidden flex md:hidden gap-2 overflow-x-auto border-b border-[#CFE0F5] bg-white px-4 py-2.5">
-          <Link
-            href="/dashboard"
-            className="flex shrink-0 items-center gap-1.5 rounded-lg border border-[#CFE0F5] px-3 py-1.5 text-xs font-bold text-[#072A44]"
-          >
-            <FiHome /> Dashboard
-          </Link>
-          <Link
-            href="/bills"
-            className="flex shrink-0 items-center gap-1.5 rounded-lg border border-[#CFE0F5] px-3 py-1.5 text-xs font-bold text-[#072A44]"
-          >
-            <FiFileText /> Bill Entry
-          </Link>
-          <Link
-            href="/transactions"
-            className="flex shrink-0 items-center gap-1.5 rounded-lg bg-[#0B5ED7] px-3 py-1.5 text-xs font-bold text-white"
-          >
-            <FiCreditCard /> Debit & Credit
-          </Link>
-        </div>
+        <MobileNav user={user} onProfileClick={() => setIsProfileOpen(true)} />
 
         {/* Yellow top navbar matching the image */}
         <header className="print:hidden flex flex-wrap items-center justify-between gap-3 bg-[#FFD600] px-5 py-3 sm:px-6 sm:py-3.5 shadow-sm">
@@ -984,14 +1006,16 @@ export default function TransactionsPage() {
               <span>Backup</span>
             </button>
 
-            {/* Make Bill Button */}
-            <button
-              type="button"
-              onClick={() => setIsMakeBillOpen(true)}
-              className="flex items-center gap-1 rounded-xl bg-[#0B5ED7] px-4 py-1.5 sm:py-2 text-xs sm:text-sm font-bold text-white shadow-xs hover:bg-[#0A4FB3] transition cursor-pointer"
-            >
-              <span>+ Make Bill</span>
-            </button>
+            {/* Make Bill Button (Admin only on this page) */}
+            {isAdmin && (
+              <button
+                type="button"
+                onClick={() => setIsMakeBillOpen(true)}
+                className="flex items-center gap-1 rounded-xl bg-[#0B5ED7] px-4 py-1.5 sm:py-2 text-xs sm:text-sm font-bold text-white shadow-xs hover:bg-[#0A4FB3] transition cursor-pointer"
+              >
+                <span>+ Make Bill</span>
+              </button>
+            )}
 
             {/* Export Excel Button */}
             <button
@@ -1530,13 +1554,24 @@ export default function TransactionsPage() {
                               </span>
                             </td>
                             <td className="py-3.5 px-4 text-center whitespace-nowrap">
-                              <button
-                                type="button"
-                                onClick={() => setEditingTransaction(item)}
-                                className="border border-slate-200 bg-white text-slate-700 text-xs font-semibold px-3 py-1 rounded-md hover:bg-slate-100 transition cursor-pointer"
-                              >
-                                Edit
-                              </button>
+                              <div className="flex items-center justify-center gap-1.5">
+                                <button
+                                  type="button"
+                                  onClick={() => handlePrintTransactionBill(item)}
+                                  className="inline-flex items-center gap-1 border border-[#0B5ED7]/30 bg-[#0B5ED7]/5 text-[#0B5ED7] hover:bg-[#0B5ED7] hover:text-white text-xs font-semibold px-2.5 py-1 rounded-md transition cursor-pointer"
+                                  title="Print official Bill / Voucher for this transaction"
+                                >
+                                  <FiPrinter className="h-3 w-3" />
+                                  Bill
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setEditingTransaction(item)}
+                                  className="border border-slate-200 bg-white text-slate-700 text-xs font-semibold px-2.5 py-1 rounded-md hover:bg-slate-100 transition cursor-pointer"
+                                >
+                                  Edit
+                                </button>
+                              </div>
                             </td>
                           </tr>
                         );
@@ -1554,19 +1589,25 @@ export default function TransactionsPage() {
         </main>
 
         {/* Dedicated Print Template matching Image 3 */}
-        <section className="hidden print:block w-full bg-white text-slate-900 p-2 sm:p-4">
-          {/* Print Header */}
-          <div className="flex items-start justify-between border-b border-slate-200 pb-3 mb-5">
-            <div>
-              <h1 className="text-3xl font-black tracking-tight text-[#072A44]">
-                PHIDIM SERVICE
-              </h1>
-              <p className="text-xs font-semibold text-slate-500 mt-1 uppercase tracking-wider">
-                DEMO STATEMENT • {printFilterLabel} • Nepal time
-              </p>
+        <section className="hidden print:block w-full bg-white text-slate-900 p-2 sm:p-4 printable-statement">
+          {/* Print Header with Official Logo */}
+          <div className="flex items-start justify-between border-b-2 border-slate-900 pb-3 mb-5">
+            <div className="flex items-center gap-3">
+              <img src="/logo.png" alt="Phidim Service Logo" className="w-16 h-16 object-contain" />
+              <div>
+                <h1 className="text-2xl font-black tracking-tight text-[#072A44] leading-tight">
+                  phidim service and supplier
+                </h1>
+                <p className="text-xs font-bold text-slate-700">Phidim-4, Panchthar • Phone: 9862772457</p>
+                <p className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider mt-0.5">
+                  DEBIT & CREDIT STATEMENT • {printFilterLabel} • Nepal time
+                </p>
+              </div>
             </div>
-            <div className="text-right text-xs font-semibold text-slate-700">
-              PHIDIM SERVICE — Debit & Credit PDF
+            <div className="text-right text-xs">
+              <p className="font-black text-sm uppercase text-[#0B5ED7]">TRANSACTION REPORT</p>
+              <p className="text-slate-600 font-bold mt-1">Date: {formatDateYMD(new Date())}</p>
+              <p className="text-slate-500 font-mono text-[11px]">PAN: 618574476</p>
             </div>
           </div>
 
@@ -1667,6 +1708,18 @@ export default function TransactionsPage() {
               })}
             </tbody>
           </table>
+
+          {/* Statement Print Footer with Stamp & Signature */}
+          <div className="flex items-end justify-between mt-8 pt-4 border-t border-slate-300">
+            <div className="text-xs text-slate-600 space-y-0.5">
+              <p className="font-bold text-slate-900">phidim service and supplier</p>
+              <p>Website: phidimservice.com.np • Phone: 9862772457</p>
+              <p className="text-[11px] text-slate-400 italic">This is a system generated official transaction statement.</p>
+            </div>
+            <div className="flex flex-col items-center">
+              <img src="/signature.png?v=3" alt="Authorized Signature & Stamp" className="w-44 h-auto object-contain" />
+            </div>
+          </div>
         </section>
       </div>
 
@@ -1704,6 +1757,13 @@ export default function TransactionsPage() {
         onClose={() => setIsProfileOpen(false)}
         user={user}
         onUpdatePicture={updatePicture}
+      />
+
+      {/* Print Bill Modal for Debit & Credit Transaction */}
+      <PrintBillModal
+        bill={printingBill}
+        isOpen={Boolean(printingBill)}
+        onClose={() => setPrintingBill(null)}
       />
     </div>
   );

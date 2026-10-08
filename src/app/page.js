@@ -26,6 +26,11 @@ export default function LoginPage() {
       const url = '/api/auth/login';
       const res = await axios.post(url, data, { withCredentials: true });
 
+      const authUser = res.data?.data?.user || res.data?.user;
+      if (authUser) {
+        localStorage.setItem('auth_user', JSON.stringify(authUser));
+      }
+
       console.log("response:", res.data);
       toast.success("User logged in successfully!");
       router.push("/dashboard");
@@ -200,11 +205,8 @@ export default function LoginPage() {
 
           <GoogleLoginButton />
 
-          <p className="mt-6 text-center text-base text-slate-500">
-            Don&apos;t have an account?{' '}
-            <a href="/register" className="font-bold text-[#0B5ED7] hover:text-[#072A44] transition-colors">
-              Create one
-            </a>
+          <p className="mt-6 text-center text-sm text-slate-400">
+            Need access or an account? Contact your administrator.
           </p>
         </div>
       </div>

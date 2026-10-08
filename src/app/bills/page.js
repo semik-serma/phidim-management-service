@@ -11,6 +11,7 @@ import {
   FiFileText,
   FiHome,
   FiCreditCard,
+  FiBookOpen,
   FiPlus,
   FiRefreshCw,
   FiSearch,
@@ -24,6 +25,7 @@ import {
   FiDownload,
   FiShield,
   FiFilter,
+  FiPackage,
 } from 'react-icons/fi';
 import toast from 'react-hot-toast';
 import { useAuth } from '@/hooks/useAuth';
@@ -36,8 +38,11 @@ import {
 } from '@/lib/billApi';
 import UserAvatar from '@/components/UserAvatar';
 import ProfileModal from '@/components/ProfileModal';
+import Sidebar, { MobileNav } from '@/components/Sidebar';
 import ShareBillModal from '@/components/ShareBillModal';
 import AdminLogsModal from '@/components/AdminLogsModal';
+import PrintBillModal from '@/components/PrintBillModal';
+import CreateBillModal from '@/components/CreateBillModal';
 
 const notoSans = Noto_Sans({
   subsets: ['latin'],
@@ -104,18 +109,6 @@ function getInitials(name = '') {
   );
 }
 
-const NAV = [
-  {
-    title: 'MAIN',
-    items: [
-      { label: 'Dashboard', href: '/dashboard' },
-      { label: 'Bill Entry', href: '/bills' },
-      { label: 'Debit & Credit', href: '/transactions' },
-      { label: 'Notes & Agenda', href: '/notes' },
-    ],
-  },
-];
-
 const QUICK_PROJECT_SUGGESTIONS = [
   '⚡ House Wiring',
   '🔌 Meter Setup',
@@ -175,6 +168,7 @@ export default function BillsPage() {
 
   // Sharing & Export states
   const [sharingBill, setSharingBill] = useState(null);
+  const [printingBill, setPrintingBill] = useState(null);
   const [isAdminLogsOpen, setIsAdminLogsOpen] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [adminUsers, setAdminUsers] = useState([]);
@@ -240,8 +234,13 @@ export default function BillsPage() {
     let cancelled = false;
 
     async function initBills() {
+      const userRole = (user?.role || 'staff').toLowerCase();
+      if (userRole !== 'admin' && userRole !== 'staff') {
+        setBillsLoading(false);
+        return;
+      }
       try {
-        const filters = user?.role === 'admin' ? adminFilters : {};
+        const filters = userRole === 'admin' ? adminFilters : {};
         const data = await getAllBills(filters);
         if (!cancelled) setBills(extractList(data).map(normalizeBill));
       } catch (error) {
@@ -448,6 +447,11 @@ export default function BillsPage() {
     }
   }
 
+  const userRole = (user?.role || 'staff').toLowerCase();
+  const isAdmin = userRole === 'admin';
+  const isStaff = userRole === 'staff';
+  const canAccessBills = isAdmin || isStaff;
+
   if (loading) {
     return (
       <div className={`${notoSans.className} min-h-screen flex items-center justify-center bg-[#F0F4FA]`}>
@@ -457,61 +461,58 @@ export default function BillsPage() {
   }
   if (!user) return null;
 
+  if (!canAccessBills) {
+    return (
+      <div className={`${notoSans.className} min-h-screen flex items-center justify-center bg-[#F0F4FA] p-6 text-[#072A44]`}>
+        <div className="max-w-md w-full bg-white rounded-2xl p-8 shadow-sm border border-[#CFE0F5] text-center">
+          <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-amber-100 text-amber-700">
+            <FiAlertCircle className="h-8 w-8" />
+          </div>
+          <h1 className="text-2xl font-extrabold text-[#072A44]">
+            Access Restricted
+          </h1>
+          <p className="mt-2 text-sm text-slate-600">
+            The Bill Entry module is reserved exclusively for <strong>Staff</strong> and <strong>Administrators</strong>.
+          </p>
+          <p className="mt-1 text-xs text-slate-500">
+            Your current assigned role is <span className="font-extrabold uppercase text-[#0B5ED7]">{userRole}</span>. As an accountant, you have access to Debit & Credit and Notes.
+          </p>
+          <div className="mt-6 flex flex-col sm:flex-row gap-2.5 justify-center">
+            <Link
+              href="/transactions"
+              className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-[#0B5ED7] px-4 py-2.5 text-xs font-bold text-white hover:bg-[#0A4FB3] transition"
+            >
+              <FiCreditCard className="h-4 w-4" /> Go to Debit & Credit
+            </Link>
+            <Link
+              href="/notes"
+              className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-xs font-bold text-slate-700 hover:bg-slate-50 transition"
+            >
+              <FiBookOpen className="h-4 w-4" /> Go to Notes & Agenda
+            </Link>
+            <Link
+              href="/dashboard"
+              className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-xs font-bold text-slate-700 hover:bg-slate-50 transition"
+            >
+              <FiHome className="h-4 w-4" /> Dashboard
+            </Link>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   const userName = user.full_name || user.name || user.email || 'User';
   const userPicture = user.picture || user.avatar || user.profile_picture || '';
 
   return (
     <div className={`${notoSans.className} min-h-screen flex bg-[#F0F4FA] text-[#0B1F3A]`}>
-      {/* Sidebar */}
-      <aside className="hidden md:flex w-[215px] shrink-0 flex-col bg-[#072A44] text-white px-3 pt-5 pb-6 sticky top-0 h-screen">
-        <div className="px-3 mb-6">
-          <h1 className="text-lg font-extrabold tracking-wide">PHIDIM SERVICE</h1>
-          <p className="text-[11px] text-blue-200 mt-0.5">Service • Supply • Solutions</p>
-        </div>
-
-        {NAV.map((section) => (
-          <div key={section.title} className="mb-4">
-            <p className="px-3 mb-1.5 text-[11px] font-bold tracking-[0.12em] text-[#7CC0FF]">
-              {section.title}
-            </p>
-            {section.items.map((item) => (
-              <Link
-                key={item.label}
-                href={item.href}
-                className={`block px-3 py-2 rounded-lg text-[15px] font-bold transition mb-1 ${
-                  item.href === '/bills'
-                    ? 'bg-[#0B5ED7] text-white'
-                    : 'bg-transparent text-blue-100 hover:bg-[#0B5ED7]/60'
-                }`}
-              >
-                {item.label}
-              </Link>
-            ))}
-          </div>
-        ))}
-
-        {/* User Profile in Sidebar */}
-        <div className="mt-auto px-1 pt-4 border-t border-white/10">
-          <button
-            type="button"
-            onClick={() => setIsProfileOpen(true)}
-            className="w-full flex items-center gap-2.5 rounded-xl bg-white/5 hover:bg-white/10 p-2.5 text-left transition cursor-pointer group"
-            title="Click to view/update profile"
-          >
-            <UserAvatar user={user} size="sm" showBadge={true} />
-            <div className="min-w-0 flex-1">
-              <p className="truncate text-xs font-bold text-white group-hover:text-[#FFD600] transition">
-                {userName}
-              </p>
-              <p className="truncate text-[10px] text-blue-200">
-                {user.email || 'Signed in'}
-              </p>
-            </div>
-          </button>
-        </div>
-      </aside>
+      {/* Desktop Sidebar */}
+      <Sidebar user={user} onProfileClick={() => setIsProfileOpen(true)} />
 
       <div className="flex-1 min-w-0 flex flex-col">
+        {/* Mobile Navigation */}
+        <MobileNav user={user} onProfileClick={() => setIsProfileOpen(true)} />
         {/* Yellow top bar */}
         <header className="flex flex-wrap items-center justify-between gap-3 bg-[#FFD600] px-6 py-4">
           <div className="flex items-center gap-3">
@@ -574,13 +575,27 @@ export default function BillsPage() {
             href="/bills"
             className="flex shrink-0 items-center gap-1.5 rounded-lg bg-[#0B5ED7] px-3 py-1.5 text-xs font-bold text-white"
           >
-            <FiFileText /> Bills
+            <FiFileText /> Bill Entry
           </Link>
+          {isAdmin && (
+            <Link
+              href="/transactions"
+              className="flex shrink-0 items-center gap-1.5 rounded-lg border border-[#CFE0F5] px-3 py-1.5 text-xs font-bold text-[#072A44]"
+            >
+              <FiCreditCard /> Debit & Credit
+            </Link>
+          )}
           <Link
-            href="/transactions"
+            href="/notes"
             className="flex shrink-0 items-center gap-1.5 rounded-lg border border-[#CFE0F5] px-3 py-1.5 text-xs font-bold text-[#072A44]"
           >
-            <FiCreditCard /> Transactions
+            <FiBookOpen /> Notes & Agenda
+          </Link>
+          <Link
+            href="/products"
+            className="flex shrink-0 items-center gap-1.5 rounded-lg border border-[#CFE0F5] px-3 py-1.5 text-xs font-bold text-[#072A44]"
+          >
+            <FiPackage /> Products
           </Link>
         </div>
 
@@ -916,6 +931,14 @@ export default function BillsPage() {
                       </button>
                       <button
                         type="button"
+                        onClick={() => setPrintingBill(bill)}
+                        className="rounded-lg p-1.5 text-indigo-600 hover:bg-indigo-50 transition cursor-pointer"
+                        title="Print Official Bill (Phidim Service Format)"
+                      >
+                        <FiPrinter className="h-4 w-4" />
+                      </button>
+                      <button
+                        type="button"
                         onClick={() => setSharingBill(bill)}
                         className="rounded-lg p-1.5 text-emerald-600 hover:bg-emerald-50 transition cursor-pointer"
                         title="Share Bill & Export Excel"
@@ -940,335 +963,11 @@ export default function BillsPage() {
       </div>
 
       {/* CREATE BILL MODAL */}
-      {isCreateOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 overflow-y-auto">
-          <div className="w-full max-w-2xl rounded-3xl bg-white p-7 shadow-2xl border border-[#CFE0F5] my-8 animate-in fade-in zoom-in-95 max-h-[90vh] flex flex-col">
-            <div className="flex items-center justify-between border-b border-[#E1EAF6] pb-4">
-              <div>
-                <h3 className="text-xl font-extrabold text-[#072A44]">Create Service Bill</h3>
-                <p className="text-xs text-slate-500 mt-0.5">
-                  Enter customer details and bill line items
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={() => setIsCreateOpen(false)}
-                className="rounded-full p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-700 transition"
-              >
-                <FiX className="h-5 w-5" />
-              </button>
-            </div>
-
-            {createError && (
-              <div className="mt-4 rounded-xl bg-rose-50 p-3.5 border border-rose-200 text-xs font-semibold text-rose-700 flex items-center gap-2">
-                <FiAlertCircle className="h-4 w-4 shrink-0 text-rose-600" />
-                <span>{createError}</span>
-              </div>
-            )}
-
-            <form onSubmit={handleCreateBillSubmit} className="mt-5 space-y-5 overflow-y-auto pr-1">
-              {/* SECTION 1: SELECTABLE OPTIONS */}
-              <div className="rounded-2xl border border-blue-100 bg-[#F4F8FD] p-4.5 space-y-3.5">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <span className="flex h-5 w-5 items-center justify-center rounded-md bg-[#0B5ED7] text-white text-[11px] font-bold">
-                      <FiLayers className="h-3 w-3" />
-                    </span>
-                    <span className="text-xs font-black uppercase tracking-wider text-[#0B5ED7]">
-                      Selectable Options & Settings
-                    </span>
-                  </div>
-                  <span className="text-[10px] font-bold text-slate-500 bg-white px-2 py-0.5 rounded-full border border-blue-100">
-                    Dropdowns & Pickers
-                  </span>
-                </div>
-
-                <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2">
-                  <div>
-                    <label className="block text-xs font-bold uppercase tracking-wider text-[#072A44] mb-1.5">
-                      Bill Date <span className="text-rose-500">*</span>
-                    </label>
-                    <input
-                      type="date"
-                      required
-                      value={billForm.bill_date}
-                      onChange={(e) =>
-                        setBillForm({ ...billForm, bill_date: e.target.value })
-                      }
-                      className="w-full rounded-xl border-2 border-[#CFE0F5] bg-white px-3.5 py-2.5 text-sm text-[#072A44] focus:outline-none focus:border-[#0B5ED7]"
-                    />
-                  </div>
-
-                  {/* Creator Role */}
-                  <div>
-                    <label className="block text-xs font-bold uppercase tracking-wider text-[#072A44] mb-1.5 flex items-center justify-between">
-                      <span>Role</span>
-                      <span className={`inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full capitalize ${
-                        billForm.role === 'staff'
-                          ? 'bg-blue-100 text-blue-800'
-                          : billForm.role === 'accountant'
-                          ? 'bg-emerald-100 text-emerald-800'
-                          : 'bg-amber-100 text-amber-800'
-                      }`}>
-                        {billForm.role === 'staff' ? '👤 Staff' : billForm.role === 'accountant' ? '💼 Accountant' : '👑 Admin'}
-                      </span>
-                    </label>
-                    <select
-                      value={billForm.role}
-                      onChange={(e) => setBillForm({ ...billForm, role: e.target.value })}
-                      className="w-full rounded-xl border-2 border-[#CFE0F5] bg-white px-3.5 py-2.5 text-sm font-bold text-[#072A44] focus:outline-none focus:border-[#0B5ED7] cursor-pointer"
-                    >
-                      <option value="admin">Administrator (Admin)</option>
-                      <option value="staff">Staff Member (Staff)</option>
-                      <option value="accountant">Accountant</option>
-                    </select>
-                  </div>
-                </div>
-
-                {/* Quick Project Presets */}
-                <div className="pt-1">
-                  <span className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">
-                    Quick Project / Purpose Presets:
-                  </span>
-                  <div className="flex flex-wrap gap-1.5">
-                    {QUICK_PROJECT_SUGGESTIONS.map((preset) => (
-                      <button
-                        key={preset}
-                        type="button"
-                        onClick={() => setBillForm({ ...billForm, project: preset })}
-                        className={`text-[11px] font-semibold px-2.5 py-1 rounded-lg border transition cursor-pointer ${
-                          billForm.project === preset
-                            ? 'bg-[#0B5ED7] text-white border-[#0B5ED7]'
-                            : 'bg-white text-slate-700 border-slate-200 hover:border-[#0B5ED7] hover:text-[#0B5ED7]'
-                        }`}
-                      >
-                        {preset}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              </div>
-
-              {/* SECTION 2: MANUALLY ENTERED FIELDS */}
-              <div className="rounded-2xl border border-[#CFE0F5] bg-white p-4.5 space-y-4">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <span className="flex h-5 w-5 items-center justify-center rounded-md bg-[#072A44] text-white text-[11px] font-bold">
-                      <FiEdit3 className="h-3 w-3" />
-                    </span>
-                    <span className="text-xs font-black uppercase tracking-wider text-[#072A44]">
-                      Manually Entered Customer & Bill Details
-                    </span>
-                  </div>
-                  <span className="text-[10px] font-bold text-slate-500 bg-slate-50 px-2 py-0.5 rounded-full border border-slate-200">
-                    Text & Quantity Inputs
-                  </span>
-                </div>
-
-                {/* Customer Info Grid */}
-                <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2">
-                  <div>
-                    <label className="block text-xs font-bold uppercase tracking-wider text-[#072A44] mb-1.5">
-                      Customer Name <span className="text-rose-500">*</span>
-                    </label>
-                    <input
-                      type="text"
-                      required
-                      placeholder="e.g. Ram Kumar Shrestha"
-                      value={billForm.customer_name}
-                      onChange={(e) =>
-                        setBillForm({ ...billForm, customer_name: e.target.value })
-                      }
-                      className="w-full rounded-xl border-2 border-[#CFE0F5] bg-white px-3.5 py-2.5 text-sm font-semibold text-[#072A44] focus:outline-none focus:border-[#0B5ED7]"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-bold uppercase tracking-wider text-[#072A44] mb-1.5">
-                      Phone Number <span className="text-rose-500">*</span>
-                    </label>
-                    <input
-                      type="tel"
-                      required
-                      placeholder="e.g. 9841234567"
-                      value={billForm.phone_number}
-                      onChange={(e) =>
-                        setBillForm({ ...billForm, phone_number: e.target.value })
-                      }
-                      className="w-full rounded-xl border-2 border-[#CFE0F5] bg-white px-3.5 py-2.5 text-sm font-semibold text-[#072A44] focus:outline-none focus:border-[#0B5ED7]"
-                    />
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2">
-                  <div>
-                    <label className="block text-xs font-bold uppercase tracking-wider text-[#072A44] mb-1.5">
-                      Address <span className="text-rose-500">*</span>
-                    </label>
-                    <input
-                      type="text"
-                      required
-                      placeholder="e.g. Phidim-1, Panchthar"
-                      value={billForm.address}
-                      onChange={(e) =>
-                        setBillForm({ ...billForm, address: e.target.value })
-                      }
-                      className="w-full rounded-xl border-2 border-[#CFE0F5] bg-white px-3.5 py-2.5 text-sm text-[#072A44] focus:outline-none focus:border-[#0B5ED7]"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-bold uppercase tracking-wider text-[#072A44] mb-1.5">
-                      Project / Purpose <span className="text-rose-500">*</span>
-                    </label>
-                    <input
-                      type="text"
-                      required
-                      placeholder="e.g. Home Electrical Wiring / Meter Setup"
-                      value={billForm.project}
-                      onChange={(e) =>
-                        setBillForm({ ...billForm, project: e.target.value })
-                      }
-                      className="w-full rounded-xl border-2 border-[#CFE0F5] bg-white px-3.5 py-2.5 text-sm text-[#072A44] focus:outline-none focus:border-[#0B5ED7]"
-                    />
-                  </div>
-                </div>
-
-              {/* Dynamic Items Table */}
-              <div className="pt-2">
-                <div className="flex items-center justify-between mb-2">
-                  <label className="text-xs font-bold uppercase tracking-wider text-[#072A44]">
-                    Bill Items & Particulars <span className="text-rose-500">*</span>
-                  </label>
-                  <button
-                    type="button"
-                    onClick={handleAddItem}
-                    className="inline-flex items-center gap-1 text-xs font-bold text-[#0B5ED7] hover:underline cursor-pointer"
-                  >
-                    <FiPlus className="h-3.5 w-3.5" /> Add Row
-                  </button>
-                </div>
-
-                <div className="rounded-xl border border-[#CFE0F5] overflow-hidden">
-                  <div className="grid grid-cols-[2fr_1fr_1.2fr_1.2fr_40px] gap-2 bg-[#EEF4FC] px-3 py-2 text-xs font-extrabold text-[#072A44]">
-                    <span>Particulars</span>
-                    <span>Qty</span>
-                    <span>Rate (Rs)</span>
-                    <span className="text-right">Total (Rs)</span>
-                    <span></span>
-                  </div>
-
-                  <div className="divide-y divide-[#E1EAF6]">
-                    {billForm.items.map((item, idx) => (
-                      <div
-                        key={idx}
-                        className="grid grid-cols-[2fr_1fr_1.2fr_1.2fr_40px] items-center gap-2 p-2.5 bg-white"
-                      >
-                        <input
-                          type="text"
-                          required
-                          placeholder="e.g. 1.5mm Wire / MCB Switch"
-                          value={item.particular}
-                          onChange={(e) =>
-                            handleItemChange(idx, 'particular', e.target.value)
-                          }
-                          className="w-full rounded-lg border border-[#CFE0F5] px-2.5 py-1.5 text-xs font-medium focus:outline-none focus:border-[#0B5ED7]"
-                        />
-
-                        <input
-                          type="number"
-                          min="1"
-                          required
-                          value={item.qty}
-                          onChange={(e) =>
-                            handleItemChange(idx, 'qty', e.target.value)
-                          }
-                          className="w-full rounded-lg border border-[#CFE0F5] px-2 py-1.5 text-xs font-medium focus:outline-none focus:border-[#0B5ED7]"
-                        />
-
-                        <input
-                          type="number"
-                          min="0"
-                          step="any"
-                          required
-                          placeholder="0.00"
-                          value={item.rate}
-                          onChange={(e) =>
-                            handleItemChange(idx, 'rate', e.target.value)
-                          }
-                          className="w-full rounded-lg border border-[#CFE0F5] px-2 py-1.5 text-xs font-medium focus:outline-none focus:border-[#0B5ED7]"
-                        />
-
-                        <div className="text-right font-bold text-xs text-[#072A44] pr-1">
-                          Rs. {((Number(item.qty) || 0) * (Number(item.rate) || 0)).toLocaleString()}
-                        </div>
-
-                        <div className="flex justify-center">
-                          <button
-                            type="button"
-                            onClick={() => handleRemoveItem(idx)}
-                            disabled={billForm.items.length <= 1}
-                            className="text-rose-500 hover:text-rose-700 disabled:opacity-30 disabled:pointer-events-none p-1"
-                          >
-                            <FiTrash2 className="h-3.5 w-3.5" />
-                          </button>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            </div>
-
-              {/* Grand Total Summary Box */}
-              <div className="rounded-xl bg-[#072A44] p-4 text-white flex items-center justify-between">
-                <div>
-                  <p className="text-xs uppercase tracking-wider text-blue-200 font-bold">
-                    Grand Total ({billForm.items.length} item{billForm.items.length > 1 ? 's' : ''})
-                  </p>
-                  <p className="text-2xl font-extrabold text-[#FFD600]">
-                    Rs. {computedGrandTotal.toLocaleString()}
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  onClick={handleAddItem}
-                  className="rounded-lg bg-white/10 hover:bg-white/20 px-3 py-1.5 text-xs font-bold text-white transition"
-                >
-                  + Add Item
-                </button>
-              </div>
-
-              <div className="flex items-center justify-end gap-3 pt-3 border-t border-[#E1EAF6]">
-                <button
-                  type="button"
-                  onClick={() => setIsCreateOpen(false)}
-                  className="rounded-xl border-2 border-[#CFE0F5] bg-white px-5 py-2.5 text-xs font-bold text-slate-700 hover:bg-slate-50 transition cursor-pointer"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={createSubmitting}
-                  className="flex items-center gap-2 rounded-xl bg-[#0B5ED7] px-6 py-2.5 text-xs font-bold text-white shadow-lg shadow-[#0B5ED7]/30 hover:bg-[#0A4FB3] transition cursor-pointer disabled:opacity-60"
-                >
-                  {createSubmitting ? (
-                    <>
-                      <FiRefreshCw className="h-4 w-4 animate-spin" />
-                      Saving Bill...
-                    </>
-                  ) : (
-                    <>
-                      <FiCheckCircle className="h-4 w-4" />
-                      Save & Issue Bill
-                    </>
-                  )}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
+      <CreateBillModal
+        isOpen={isCreateOpen}
+        onClose={() => setIsCreateOpen(false)}
+        onSuccess={loadBills}
+      />
 
       {/* VIEW BILL DETAILS MODAL */}
       {selectedBill && (
@@ -1390,8 +1089,12 @@ export default function BillsPage() {
                   </button>
                   <button
                     type="button"
-                    onClick={() => window.print()}
-                    className="flex items-center gap-1.5 rounded-xl border border-[#CFE0F5] bg-white px-4 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50 transition cursor-pointer"
+                    onClick={() => {
+                      const b = selectedBill;
+                      setPrintingBill(b);
+                    }}
+                    className="flex items-center gap-1.5 rounded-xl border border-indigo-200 bg-indigo-50 px-4 py-2 text-xs font-bold text-indigo-700 hover:bg-indigo-100 transition cursor-pointer"
+                    title="Print Official Formatted Bill"
                   >
                     <FiPrinter className="h-4 w-4" />
                     Print
@@ -1415,6 +1118,15 @@ export default function BillsPage() {
         <ShareBillModal
           bill={sharingBill}
           onClose={() => setSharingBill(null)}
+        />
+      )}
+
+      {/* PRINT OFFICIAL BILL MODAL */}
+      {printingBill && (
+        <PrintBillModal
+          bill={printingBill}
+          isOpen={Boolean(printingBill)}
+          onClose={() => setPrintingBill(null)}
         />
       )}
 

@@ -227,11 +227,11 @@ export default function CreateTransactionModal({ isOpen, onClose, onSuccess, use
                 </label>
                 <select
                   value={form.role}
+                  disabled={currentUser?.role !== 'admin'}
                   onChange={(e) => handleRoleChange(e.target.value)}
-                  className="w-full rounded-xl border-2 border-[#CFE0F5] bg-white px-3.5 py-2.5 text-sm font-bold text-[#072A44] focus:outline-none focus:border-[#0B5ED7] cursor-pointer"
+                  className="w-full rounded-xl border-2 border-[#CFE0F5] bg-white px-3.5 py-2.5 text-sm font-bold text-[#072A44] focus:outline-none focus:border-[#0B5ED7] cursor-pointer disabled:bg-slate-50 disabled:opacity-80"
                 >
                   <option value="admin">Administrator (Admin)</option>
-                  <option value="staff">Staff Member (Staff)</option>
                   <option value="accountant">Accountant</option>
                 </select>
               </div>

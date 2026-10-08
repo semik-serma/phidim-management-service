@@ -9,12 +9,8 @@ import {
   FiPrinter,
   FiClock,
   FiAlertCircle,
-  FiCheckCircle,
-  FiUser,
-  FiMapPin,
-  FiPhone,
-  FiCalendar,
 } from 'react-icons/fi';
+import PrintableBill from '@/components/PrintableBill';
 
 export default function SharedBillPage() {
   const params = useParams();
@@ -111,14 +107,6 @@ export default function SharedBillPage() {
     );
   }
 
-  const billDateStr = bill.bill_date
-    ? new Date(bill.bill_date).toLocaleDateString('en-US', {
-        year: 'numeric',
-        month: 'short',
-        day: 'numeric',
-      })
-    : 'N/A';
-
   const expiresStr = bill.share_expires_at
     ? new Date(bill.share_expires_at).toLocaleDateString('en-US', {
         year: 'numeric',
@@ -167,127 +155,9 @@ export default function SharedBillPage() {
           </div>
         </div>
 
-        {/* Official Bill Paper */}
-        <div className="bg-white rounded-3xl shadow-xl border border-[#CFE0F5] p-8 sm:p-10 space-y-8">
-          {/* Header */}
-          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center border-b border-[#E1EAF6] pb-6 gap-4">
-            <div>
-              <span className="text-[11px] font-extrabold tracking-widest uppercase text-[#0B5ED7]">
-                Official Service Invoice
-              </span>
-              <h1 className="text-2xl font-black text-[#072A44] tracking-tight">
-                PHIDIM SERVICE
-              </h1>
-              <p className="text-xs font-medium text-slate-500">
-                Electrical & Maintenance Solutions
-              </p>
-            </div>
-
-            <div className="sm:text-right">
-              <span className="inline-block rounded-full bg-blue-50 px-3 py-1 text-xs font-black text-[#0B5ED7] border border-blue-200">
-                {bill.bill_no || 'BILL'}
-              </span>
-              <p className="text-xs font-semibold text-slate-600 mt-2 flex items-center sm:justify-end gap-1">
-                <FiCalendar className="h-3 w-3 text-slate-400" />
-                Date: {billDateStr}
-              </p>
-              <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-700 mt-1">
-                <FiCheckCircle className="h-3 w-3" />
-                Status: {(bill.status || 'issued').toUpperCase()}
-              </span>
-            </div>
-          </div>
-
-          {/* Customer & Project Information Cards */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div className="rounded-2xl border border-slate-100 bg-[#F8FAFD] p-4 space-y-2">
-              <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
-                Billed To (Customer)
-              </p>
-              <p className="text-base font-extrabold text-[#072A44] flex items-center gap-1.5">
-                <FiUser className="h-4 w-4 text-[#0B5ED7]" />
-                {bill.customer_name}
-              </p>
-              <p className="text-xs font-semibold text-slate-600 flex items-center gap-1.5">
-                <FiPhone className="h-3.5 w-3.5 text-slate-400" />
-                {bill.phone_number}
-              </p>
-              <p className="text-xs text-slate-600 flex items-center gap-1.5">
-                <FiMapPin className="h-3.5 w-3.5 text-slate-400" />
-                {bill.address}
-              </p>
-            </div>
-
-            <div className="rounded-2xl border border-slate-100 bg-[#F8FAFD] p-4 space-y-2">
-              <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
-                Project / Service Purpose
-              </p>
-              <p className="text-sm font-extrabold text-[#072A44]">
-                {bill.project}
-              </p>
-              {bill.creator_name && (
-                <p className="text-xs text-slate-500 pt-2">
-                  Issued By: <span className="font-semibold text-slate-700">{bill.creator_name}</span>
-                </p>
-              )}
-            </div>
-          </div>
-
-          {/* Items Table */}
-          <div className="rounded-2xl border border-[#CFE0F5] overflow-hidden">
-            <table className="w-full text-left text-xs">
-              <thead className="bg-[#EEF4FC] text-[#072A44] font-extrabold uppercase text-[11px] tracking-wider">
-                <tr>
-                  <th className="py-3 px-4 w-12 text-center">#</th>
-                  <th className="py-3 px-4">Particulars</th>
-                  <th className="py-3 px-4 w-20 text-center">Qty</th>
-                  <th className="py-3 px-4 w-28 text-right">Rate (Rs.)</th>
-                  <th className="py-3 px-4 w-32 text-right">Total (Rs.)</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-[#E1EAF6]">
-                {(bill.items || []).map((item, idx) => (
-                  <tr key={idx} className="hover:bg-slate-50/50">
-                    <td className="py-3.5 px-4 text-center font-bold text-slate-400">
-                      {idx + 1}
-                    </td>
-                    <td className="py-3.5 px-4 font-semibold text-[#072A44]">
-                      {item.particular}
-                    </td>
-                    <td className="py-3.5 px-4 text-center font-bold text-slate-600">
-                      {item.qty}
-                    </td>
-                    <td className="py-3.5 px-4 text-right font-medium text-slate-600">
-                      {Number(item.rate).toLocaleString()}
-                    </td>
-                    <td className="py-3.5 px-4 text-right font-extrabold text-[#072A44]">
-                      {Number(item.total).toLocaleString()}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-
-            {/* Total Footer Banner */}
-            <div className="bg-[#072A44] text-white p-5 flex items-center justify-between">
-              <div>
-                <p className="text-xs uppercase tracking-wider text-blue-200 font-bold">
-                  Grand Total Amount
-                </p>
-                <p className="text-[11px] text-slate-300">
-                  Total Items: {bill.items?.length || 0}
-                </p>
-              </div>
-              <p className="text-2xl sm:text-3xl font-black text-[#FFD600]">
-                Rs. {(bill.grand_total || 0).toLocaleString()}
-              </p>
-            </div>
-          </div>
-
-          {/* Footer note */}
-          <div className="text-center text-[11px] text-slate-400 pt-4 border-t border-slate-100">
-            This document is an electronic service record issued by Phidim Service Electrical Billing System.
-          </div>
+        {/* Authentic Printable Bill Document (Exact Reference Match) */}
+        <div className="bg-white rounded-3xl shadow-xl border border-[#CFE0F5] p-2 sm:p-6 print:border-none print:shadow-none print:p-0">
+          <PrintableBill bill={bill} />
         </div>
       </div>
     </div>

@@ -26,6 +26,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { deleteNote, getNotes } from '@/lib/noteApi';
 import UserAvatar from '@/components/UserAvatar';
 import ProfileModal from '@/components/ProfileModal';
+import Sidebar, { MobileNav } from '@/components/Sidebar';
 import CreateBillModal from '@/components/CreateBillModal';
 import CreateNoteModal from '@/components/CreateNoteModal';
 import EditNoteModal from '@/components/EditNoteModal';
@@ -34,18 +35,6 @@ const notoSans = Noto_Sans({
   subsets: ['latin'],
   weight: ['400', '500', '600', '700', '800'],
 });
-
-const NAV = [
-  {
-    title: 'MAIN',
-    items: [
-      { label: 'Dashboard', href: '/dashboard' },
-      { label: 'Bill Entry', href: '/bills' },
-      { label: 'Debit & Credit', href: '/transactions' },
-      { label: 'Notes & Agenda', href: '/notes' },
-    ],
-  },
-];
 
 function toNepaliDigits(str) {
   const nepaliDigits = ['०', '१', '२', '३', '४', '५', '६', '७', '८', '९'];
@@ -212,62 +201,22 @@ export default function NotesPage() {
     );
   }
 
+  const userRole = (user?.role || 'staff').toLowerCase();
+  const isAdmin = userRole === 'admin';
+  const isStaff = userRole === 'staff';
+  const isAccountant = userRole === 'accountant';
+  const canAccessBills = isAdmin || isStaff;
+  const canAccessTransactions = isAdmin || isAccountant;
+
   return (
     <div className={`${notoSans.className} min-h-screen flex bg-[#F0F4FA] text-[#0B1F3A]`}>
-      {/* Sidebar */}
-      <aside className="hidden md:flex w-[215px] shrink-0 flex-col bg-[#072A44] text-white px-3 pt-5 pb-6 sticky top-0 h-screen">
-        <div className="px-3 mb-6">
-          <h1 className="text-lg font-extrabold tracking-wide">PHIDIM SERVICE</h1>
-          <p className="text-[11px] text-blue-200 mt-0.5">Service • Supply • Solutions</p>
-        </div>
-
-        {NAV.map((section) => (
-          <div key={section.title} className="mb-4">
-            <p className="px-3 mb-1.5 text-[11px] font-bold tracking-[0.12em] text-[#7CC0FF]">
-              {section.title}
-            </p>
-            {section.items.map((item) => {
-              const active = item.href === '/notes';
-              return (
-                <Link
-                  key={item.label}
-                  href={item.href}
-                  className={`block px-3 py-2 rounded-lg text-[15px] font-bold transition mb-1 ${
-                    active
-                      ? 'bg-[#0B5ED7] text-white'
-                      : 'bg-transparent text-blue-100 hover:bg-[#0B5ED7]/60'
-                  }`}
-                >
-                  {item.label}
-                </Link>
-              );
-            })}
-          </div>
-        ))}
-
-        {/* User Profile in Sidebar */}
-        <div className="mt-auto px-1 pt-4 border-t border-white/10">
-          <button
-            type="button"
-            onClick={() => setIsProfileOpen(true)}
-            className="w-full flex items-center gap-2.5 rounded-xl bg-white/5 hover:bg-white/10 p-2.5 text-left transition cursor-pointer group"
-            title="Click to view/update profile"
-          >
-            <UserAvatar user={user} size="sm" showBadge={true} />
-            <div className="min-w-0 flex-1">
-              <p className="truncate text-xs font-bold text-white group-hover:text-[#FFD600] transition">
-                {userName}
-              </p>
-              <p className="truncate text-[10px] text-blue-200">
-                {user?.email || 'Signed in'}
-              </p>
-            </div>
-          </button>
-        </div>
-      </aside>
+      {/* Desktop Sidebar */}
+      <Sidebar user={user} onProfileClick={() => setIsProfileOpen(true)} />
 
       {/* Main Container */}
       <div className="flex-1 min-w-0 flex flex-col">
+        {/* Mobile Navigation */}
+        <MobileNav user={user} onProfileClick={() => setIsProfileOpen(true)} />
         {/* Yellow Top Navbar */}
         <header className="flex flex-wrap items-center justify-between gap-3 bg-[#FFD600] px-5 py-3 sm:px-6 sm:py-3.5 shadow-sm">
           {/* Left Title */}
@@ -304,14 +253,16 @@ export default function NotesPage() {
               नेपाली (AD) • {toNepaliDigits(formatDateYMD(now || new Date()))}
             </div>
 
-            {/* Make Bill Button */}
-            <button
-              type="button"
-              onClick={() => setIsMakeBillOpen(true)}
-              className="flex items-center gap-1 rounded-xl bg-[#0B5ED7] px-4 py-1.5 sm:py-2 text-xs sm:text-sm font-bold text-white shadow-xs hover:bg-[#0A4FB3] transition cursor-pointer"
-            >
-              <span>+ Make Bill</span>
-            </button>
+            {/* Make Bill Button (Staff and Admin only) */}
+            {canAccessBills && (
+              <button
+                type="button"
+                onClick={() => setIsMakeBillOpen(true)}
+                className="flex items-center gap-1 rounded-xl bg-[#0B5ED7] px-4 py-1.5 sm:py-2 text-xs sm:text-sm font-bold text-white shadow-xs hover:bg-[#0A4FB3] transition cursor-pointer"
+              >
+                <span>+ Make Bill</span>
+              </button>
+            )}
 
             {/* Create Note Button */}
             <button
@@ -324,6 +275,38 @@ export default function NotesPage() {
             </button>
           </div>
         </header>
+
+        {/* Mobile Navigation bar */}
+        <div className="flex md:hidden gap-2 overflow-x-auto border-b border-[#CFE0F5] bg-white px-4 py-2.5">
+          <Link
+            href="/dashboard"
+            className="flex shrink-0 items-center gap-1.5 rounded-lg border border-[#CFE0F5] px-3 py-1.5 text-xs font-bold text-[#072A44]"
+          >
+            <FiHome /> Dashboard
+          </Link>
+          {canAccessBills && (
+            <Link
+              href="/bills"
+              className="flex shrink-0 items-center gap-1.5 rounded-lg border border-[#CFE0F5] px-3 py-1.5 text-xs font-bold text-[#072A44]"
+            >
+              <FiFileText /> Bill Entry
+            </Link>
+          )}
+          {canAccessTransactions && (
+            <Link
+              href="/transactions"
+              className="flex shrink-0 items-center gap-1.5 rounded-lg border border-[#CFE0F5] px-3 py-1.5 text-xs font-bold text-[#072A44]"
+            >
+              <FiCreditCard /> Debit & Credit
+            </Link>
+          )}
+          <Link
+            href="/notes"
+            className="flex shrink-0 items-center gap-1.5 rounded-lg bg-[#0B5ED7] px-3 py-1.5 text-xs font-bold text-white"
+          >
+            <FiBookOpen /> Notes & Agenda
+          </Link>
+        </div>
 
         {/* Content Area */}
         <main className="flex-1 p-5 sm:p-6 max-w-7xl w-full mx-auto space-y-6">

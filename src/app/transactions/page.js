@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Noto_Sans } from 'next/font/google';
 import {
   FiArrowDownLeft,
@@ -26,12 +26,12 @@ import {
 import { useAuth } from '@/hooks/useAuth';
 import toast from 'react-hot-toast';
 import {
-  createTransaction,
   deleteTransaction,
   getTransactions,
   updateTransaction,
   exportTransactionsToExcel,
 } from '@/lib/transactionApi';
+import { ledgerDate, transactionRange, filterTransactions, isCreditTransaction } from '@/lib/ledger';
 import UserAvatar from '@/components/UserAvatar';
 import ProfileModal from '@/components/ProfileModal';
 import Sidebar, { MobileNav } from '@/components/Sidebar';
@@ -45,92 +45,8 @@ const notoSans = Noto_Sans({
   weight: ['400', '500', '600', '700', '800'],
 });
 
-// Initial demo dataset matching the exact numbers, references and times from Image 2
-const DEMO_TRANSACTIONS = [
-  {
-    _id: 'demo-1',
-    date: '2026-10-06',
-    transactionType: 'Credit',
-    account: 'Cash',
-    description: 'House wiring service payment',
-    reference: 'Sita Rai',
-    enteredBy: 'Admin',
-    entryTime: '07:00:00 AM',
-    amount: 9250,
-  },
-  {
-    _id: 'demo-2',
-    date: '2026-10-06',
-    transactionType: 'Debit',
-    account: 'Cash',
-    description: 'Cable and switch purchase',
-    reference: 'Phidim Electrical Suppliers',
-    enteredBy: 'Staff',
-    entryTime: '06:52:00 AM',
-    amount: 1600,
-  },
-  {
-    _id: 'demo-3',
-    date: '2026-10-06',
-    transactionType: 'Credit',
-    account: 'Bank',
-    description: 'CCTV installation payment',
-    reference: 'Ramesh Limbu',
-    enteredBy: 'Admin',
-    entryTime: '06:44:00 AM',
-    amount: 4100,
-  },
-  {
-    _id: 'demo-4',
-    date: '2026-10-06',
-    transactionType: 'Debit',
-    account: 'Cash',
-    description: 'Electrical conduit pipes & accessories',
-    reference: 'Phidim Hardware Store',
-    enteredBy: 'Staff',
-    entryTime: '06:30:00 AM',
-    amount: 1450,
-  },
-  {
-    _id: 'demo-5',
-    date: '2026-10-06',
-    transactionType: 'Credit',
-    account: 'Esewa',
-    description: 'MCB switch & wire retail sale',
-    reference: 'Bikash Tamang',
-    enteredBy: 'Admin',
-    entryTime: '06:15:00 AM',
-    amount: 800,
-  },
-  {
-    _id: 'demo-6',
-    date: '2026-10-06',
-    transactionType: 'Debit',
-    account: 'Bank',
-    description: 'Office Internet & utility payment',
-    reference: 'Nepal Telecom Phidim',
-    enteredBy: 'Admin',
-    entryTime: '05:45:00 AM',
-    amount: 1200,
-  },
-  {
-    _id: 'demo-7',
-    date: '2026-10-06',
-    transactionType: 'Credit',
-    account: 'Cash',
-    description: 'Earthing installation inspection',
-    reference: 'Kamal Gurung',
-    enteredBy: 'Staff',
-    entryTime: '05:10:00 AM',
-    amount: 3500,
-  },
-];
-
-function formatDisplayDate(val) {
-  if (!val) return '2026-10-06';
-  const d = new Date(val);
-  if (Number.isNaN(d.getTime())) return String(val).split('T')[0];
-  return d.toISOString().split('T')[0];
+function formatDisplayDate(value) {
+  return ledgerDate(value);
 }
 
 function formatDisplayTime(entryTime, createdAt) {
@@ -138,8 +54,9 @@ function formatDisplayTime(entryTime, createdAt) {
     return entryTime;
   }
   const dateObj = new Date(entryTime || createdAt || Date.now());
-  if (Number.isNaN(dateObj.getTime())) return '07:00:00 AM';
+  if (Number.isNaN(dateObj.getTime())) return '—';
   return new Intl.DateTimeFormat('en', {
+    timeZone: 'Asia/Kathmandu',
     hour: '2-digit',
     minute: '2-digit',
     second: '2-digit',
@@ -148,8 +65,9 @@ function formatDisplayTime(entryTime, createdAt) {
 }
 
 function formatTime(date) {
-  if (!date) return '07:26:08 AM';
+  if (!date) return '—';
   return new Intl.DateTimeFormat('en-US', {
+    timeZone: 'Asia/Kathmandu',
     hour: '2-digit',
     minute: '2-digit',
     second: '2-digit',
@@ -158,8 +76,9 @@ function formatTime(date) {
 }
 
 function formatEnglishDate(date) {
-  if (!date) return '06 Oct 2026';
+  if (!date) return '—';
   return new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Asia/Kathmandu',
     day: '2-digit',
     month: 'short',
     year: 'numeric',
@@ -167,11 +86,7 @@ function formatEnglishDate(date) {
 }
 
 function formatDateYMD(date) {
-  if (!date) return '2026-10-06';
-  const y = date.getFullYear();
-  const m = String(date.getMonth() + 1).padStart(2, '0');
-  const d = String(date.getDate()).padStart(2, '0');
-  return `${y}-${m}-${d}`;
+  return date ? ledgerDate(date) : '';
 }
 
 function toNepaliDigits(str) {
@@ -191,11 +106,13 @@ export default function TransactionsPage() {
 
   const [transactions, setTransactions] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
+  const requestId = useRef(0);
   const [search, setSearch] = useState('');
   const [typeFilter, setTypeFilter] = useState('ALL'); // 'ALL' | 'CREDIT' | 'DEBIT'
   const [dateFilter, setDateFilter] = useState('Today'); // 'Today' | '30 Days' | '60 Days' | '90 Days' | 'Custom Date'
-  const [customStartDate, setCustomStartDate] = useState('2026-10-01');
-  const [customEndDate, setCustomEndDate] = useState('2026-10-06');
+  const [customStartDate, setCustomStartDate] = useState(() => ledgerDate());
+  const [customEndDate, setCustomEndDate] = useState(() => ledgerDate());
 
   // List visibility & page size
   const [isListVisible, setIsListVisible] = useState(true);
@@ -213,64 +130,40 @@ export default function TransactionsPage() {
     };
   }, []);
 
-  // Load transactions from API (user-scoped or admin-scoped) or fallback
-  const loadData = async () => {
-    const userRole = (user?.role || 'staff').toLowerCase();
-    if (user && userRole !== 'admin' && userRole !== 'accountant') {
+  const today = ledgerDate(now || new Date());
+  const range = useMemo(() => transactionRange(dateFilter, customStartDate, customEndDate, today),
+    [dateFilter, customStartDate, customEndDate, today]);
+
+  const loadData = useCallback(async () => {
+    if (authLoading || !user) return;
+    const currentRequest = ++requestId.current;
+    if (!['admin', 'accountant'].includes((user.role || '').toLowerCase())) {
+      setTransactions([]);
       setLoading(false);
       return;
     }
     setLoading(true);
+    setLoadError('');
     try {
-      // Fetch backend transactions
-      let apiData = null;
-      try {
-        const fetched = await getTransactions();
-        if (Array.isArray(fetched)) {
-          apiData = fetched;
-        }
-      } catch {
-        // Backend offline or error
+      const data = await getTransactions();
+      if (currentRequest !== requestId.current) return;
+      setTransactions([...data].sort((a, b) =>
+        new Date(b.createdAt || b.date) - new Date(a.createdAt || a.date)));
+    } catch (error) {
+      if (currentRequest === requestId.current) {
+        setLoadError(error.response?.data?.message || error.message || 'Unable to load transactions.');
       }
-
-      if (user && Array.isArray(apiData)) {
-        // Logged-in user: strictly use their scoped database transactions
-        setTransactions(apiData);
-      } else {
-        // Guest or offline: check localStorage or demo
-        let localData = null;
-        if (typeof window !== 'undefined') {
-          const saved = localStorage.getItem('phidim_debit_credit_data');
-          if (saved) {
-            try {
-              localData = JSON.parse(saved);
-            } catch {
-              localData = null;
-            }
-          }
-        }
-
-        if (localData && Array.isArray(localData) && localData.length > 0) {
-          setTransactions(localData);
-        } else if (apiData && apiData.length > 0) {
-          setTransactions(apiData);
-        } else {
-          setTransactions(DEMO_TRANSACTIONS);
-          if (typeof window !== 'undefined') {
-            localStorage.setItem('phidim_debit_credit_data', JSON.stringify(DEMO_TRANSACTIONS));
-          }
-        }
-      }
-    } catch (err) {
-      setTransactions(DEMO_TRANSACTIONS);
     } finally {
-      setLoading(false);
+      if (currentRequest === requestId.current) setLoading(false);
     }
-  };
+  }, [user, authLoading]);
 
+  const cancelPendingLoad = useCallback(() => { requestId.current++; }, []);
   useEffect(() => {
-    loadData();
-  }, [user]);
+    // Cancel scheduled and in-flight reads when identity or filters change.
+    const timer = setTimeout(() => { loadData(); }, 0);
+    return () => { clearTimeout(timer); cancelPendingLoad(); };
+  }, [loadData, cancelPendingLoad]);
 
   // Export transactions to Excel with Record Type and Transaction Breakdown columns
   const handleExportExcel = async () => {
@@ -280,7 +173,19 @@ export default function TransactionsPage() {
       if (typeFilter === 'CREDIT') filters.type = 'Credit';
       if (typeFilter === 'DEBIT') filters.type = 'Debit';
       toast.loading('Generating Excel file...', { id: 'tx-excel-export' });
-      await exportTransactionsToExcel(filters);
+      filters.startDate = range.start;
+      filters.endDate = range.end;
+      if (search.trim()) filters.search = search.trim();
+      if (range.start && range.end && range.start > range.end) throw new Error('Start date must be before end date.');
+      const data = await exportTransactionsToExcel(filters);
+      const url = URL.createObjectURL(new Blob([data], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }));
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = 'Phidim_Transactions.xlsx';
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
       toast.success('Transactions Excel downloaded successfully!', { id: 'tx-excel-export' });
     } catch (err) {
       console.error(err);
@@ -290,56 +195,31 @@ export default function TransactionsPage() {
     }
   };
 
-  // Save changes to localStorage and update state
-  const persistTransactions = (updated) => {
-    setTransactions(updated);
-    if (typeof window !== 'undefined') {
-      localStorage.setItem('phidim_debit_credit_data', JSON.stringify(updated));
+  const handleCreated = async (created) => {
+    setSearch('');
+    setTypeFilter('ALL');
+    setIsListVisible(true);
+    const date = ledgerDate(created?.date || created?.createdAt) || today;
+    if (date === today) setDateFilter('Today');
+    else {
+      setDateFilter('Custom Date');
+      setCustomStartDate(date);
+      setCustomEndDate(date);
     }
-  };
-
-  // Create new transaction handler
-  const handleCreated = async () => {
     await loadData();
-    toast.success('Transaction created successfully!');
   };
 
-  // Update existing transaction
   const handleSaveEdit = async (updatedData) => {
     const id = updatedData._id || updatedData.id;
-    try {
-      if (id && !String(id).startsWith('demo-')) {
-        await updateTransaction(id, updatedData);
-      }
-    } catch {
-      // fallback to local update
-    }
-
-    const updatedList = transactions.map((item) => {
-      if ((item._id || item.id) === id) {
-        return {
-          ...item,
-          ...updatedData,
-        };
-      }
-      return item;
-    });
-
-    persistTransactions(updatedList);
+    await updateTransaction(id, updatedData);
+    await loadData();
   };
 
-  // Delete transaction
   const handleDelete = async (id) => {
-    try {
-      if (id && !String(id).startsWith('demo-')) {
-        await deleteTransaction(id);
-      }
-    } catch {
-      // fallback to local deletion
-    }
-
-    const updatedList = transactions.filter((item) => (item._id || item.id) !== id);
-    persistTransactions(updatedList);
+    await deleteTransaction(id);
+    requestId.current++;
+    setLoading(false);
+    setTransactions((previous) => previous.filter((item) => (item._id || item.id) !== id));
   };
 
   async function handleLogout() {
@@ -356,8 +236,7 @@ export default function TransactionsPage() {
     let debitCount = 0;
     transactions.forEach((t) => {
       const isCredit =
-        String(t.transactionType).toLowerCase().includes('credit') ||
-        String(t.transactionType).toLowerCase().includes('in');
+        isCreditTransaction(t);
       if (isCredit) creditCount++;
       else debitCount++;
     });
@@ -368,61 +247,9 @@ export default function TransactionsPage() {
     };
   }, [transactions]);
 
-  // Filtered transactions by date range, search keyword, and type
-  const filteredList = useMemo(() => {
-    const q = search.trim().toLowerCase();
-
-    return transactions.filter((t) => {
-      // Type filter check (ALL | CREDIT | DEBIT)
-      const isCredit =
-        String(t.transactionType).toLowerCase().includes('credit') ||
-        String(t.transactionType).toLowerCase().includes('in');
-
-      if (typeFilter === 'CREDIT' && !isCredit) return false;
-      if (typeFilter === 'DEBIT' && isCredit) return false;
-
-      // Date filter check
-      const rawDate = t.date ? formatDisplayDate(t.date) : '2026-10-06';
-
-      if (dateFilter === 'Today') {
-        // Today is 2026-10-06 in context
-        if (rawDate !== '2026-10-06') return false;
-      } else if (dateFilter === '30 Days') {
-        const itemD = new Date(rawDate);
-        const refD = new Date('2026-10-06');
-        const diffDays = (refD - itemD) / (1000 * 60 * 60 * 24);
-        if (diffDays > 30 || diffDays < 0) return false;
-      } else if (dateFilter === '60 Days') {
-        const itemD = new Date(rawDate);
-        const refD = new Date('2026-10-06');
-        const diffDays = (refD - itemD) / (1000 * 60 * 60 * 24);
-        if (diffDays > 60 || diffDays < 0) return false;
-      } else if (dateFilter === '90 Days') {
-        const itemD = new Date(rawDate);
-        const refD = new Date('2026-10-06');
-        const diffDays = (refD - itemD) / (1000 * 60 * 60 * 24);
-        if (diffDays > 90 || diffDays < 0) return false;
-      } else if (dateFilter === 'Custom Date') {
-        if (rawDate < customStartDate || rawDate > customEndDate) return false;
-      }
-
-      if (!q) return true;
-
-      const searchableText = [
-        t.reference || '',
-        t.description || '',
-        t.enteredBy || '',
-        t.account || '',
-        t.transactionType || '',
-        String(t.amount || ''),
-        rawDate,
-      ]
-        .join(' ')
-        .toLowerCase();
-
-      return searchableText.includes(q);
-    });
-  }, [transactions, search, dateFilter, customStartDate, customEndDate, typeFilter]);
+  const filteredList = useMemo(() => filterTransactions(transactions, {
+    type: typeFilter, search, start: range.start, end: range.end,
+  }), [transactions, typeFilter, search, range]);
 
   // Sliced list by visible limit
   const visibleTransactions = useMemo(() => {
@@ -437,8 +264,7 @@ export default function TransactionsPage() {
     visibleTransactions.forEach((t) => {
       const amt = Number(t.amount || 0);
       const isCredit =
-        String(t.transactionType).toLowerCase().includes('credit') ||
-        String(t.transactionType).toLowerCase().includes('in');
+        isCreditTransaction(t);
 
       if (isCredit) {
         creditTotal += amt;
@@ -448,7 +274,11 @@ export default function TransactionsPage() {
     });
 
     // Opening balance baseline
-    const openingBalance = 39400;
+    const openingBalance = transactions.reduce((balance, t) => {
+      const date = ledgerDate(t.date || t.createdAt);
+      if (!range.start || !date || date >= range.start) return balance;
+      return balance + (isCreditTransaction(t) ? 1 : -1) * Number(t.amount || 0);
+    }, 0);
     const closingBalance = openingBalance + creditTotal - debitTotal;
 
     return {
@@ -457,43 +287,21 @@ export default function TransactionsPage() {
       debitTotal,
       closingBalance,
     };
-  }, [visibleTransactions]);
+  }, [visibleTransactions, transactions, range.start]);
 
-  // Overall account balances for the top balance cards
+  // Account balances reflect the loaded ledger.
   const topCardStats = useMemo(() => {
-    let cash = 28450;
-    let bank = 14800;
-    let esewa = 4250;
-    let khalti = 3000;
-    let todayNet = 0;
-
-    // If working with initial demo data, provide initial demo numbers
-    if (transactions === DEMO_TRANSACTIONS || transactions.length === 7) {
-      return {
-        cash: 28450,
-        bank: 14800,
-        esewa: 4250,
-        khalti: 3000,
-        todayNet: 9700,
-      };
-    }
-
-    cash = 28450;
-    bank = 14800;
-    esewa = 4250;
-    khalti = 3000;
-    todayNet = 0;
+    let cash = 0, bank = 0, esewa = 0, khalti = 0, todayNet = 0;
 
     transactions.forEach((t) => {
       const amt = Number(t.amount || 0);
       const isCredit =
-        String(t.transactionType).toLowerCase().includes('credit') ||
-        String(t.transactionType).toLowerCase().includes('in');
+        isCreditTransaction(t);
       const acc = String(t.account || '').toLowerCase();
 
       const delta = isCredit ? amt : -amt;
 
-      if (formatDisplayDate(t.date) === '2026-10-06') {
+      if (formatDisplayDate(t.date || t.createdAt) === today) {
         todayNet += delta;
       }
 
@@ -513,9 +321,9 @@ export default function TransactionsPage() {
       bank,
       esewa,
       khalti,
-      todayNet: todayNet > 0 ? todayNet : 9700,
+      todayNet,
     };
-  }, [transactions]);
+  }, [transactions, today]);
 
   // Print function for transactions statement
   const handlePrint = () => {
@@ -531,14 +339,13 @@ export default function TransactionsPage() {
   const handlePrintTransactionBill = (item) => {
     if (!item) return;
     const isCredit =
-      String(item.transactionType).toLowerCase().includes('credit') ||
-      String(item.transactionType).toLowerCase().includes('in');
+      isCreditTransaction(item);
     const billType = isCredit ? 'CREDIT' : 'DEBIT';
     const numAmount = Number(item.amount || 0);
     const refStr =
       item.reference && item.reference !== '—'
         ? item.reference
-        : `${billType === 'CREDIT' ? 'CR' : 'DR'}-${String(item._id || item.id || Date.now()).slice(-6).toUpperCase()}`;
+        : `${billType === 'CREDIT' ? 'CR' : 'DR'}-${String(item._id || item.id || item.date || 'UNSAVED').slice(-6).toUpperCase()}`;
 
     const billObj = {
       _id: item._id || item.id,
@@ -582,9 +389,8 @@ export default function TransactionsPage() {
     const rowsHtml = visibleTransactions
       .map((item) => {
         const isCredit =
-          String(item.transactionType).toLowerCase().includes('credit') ||
-          String(item.transactionType).toLowerCase().includes('in');
-        const displayDate = formatDisplayDate(item.date);
+          isCreditTransaction(item);
+        const displayDate = formatDisplayDate(item.date || item.createdAt);
         const displayTime = formatDisplayTime(item.entryTime, item.createdAt);
         const numAmount = Number(item.amount || 0);
 
@@ -843,20 +649,7 @@ export default function TransactionsPage() {
       ? 'Today — 24 Hours Transaction List'
       : `${printFilterLabel} Transaction List`;
 
-  const dateRangeString = useMemo(() => {
-    if (dateFilter === 'Today') {
-      return '2026-10-06 — 2026-10-06';
-    } else if (dateFilter === '30 Days') {
-      return '2026-09-06 — 2026-10-06';
-    } else if (dateFilter === '60 Days') {
-      return '2026-08-07 — 2026-10-06';
-    } else if (dateFilter === '90 Days') {
-      return '2026-07-09 — 2026-10-06';
-    } else if (dateFilter === 'Custom Date') {
-      return `${customStartDate} — ${customEndDate}`;
-    }
-    return '2026-10-06 — 2026-10-06';
-  }, [dateFilter, customStartDate, customEndDate]);
+  const dateRangeString = `${range.start || 'Any date'} — ${range.end || 'Any date'}`;
 
   // Share function
   const handleShare = () => {
@@ -1477,7 +1270,7 @@ export default function TransactionsPage() {
 
             {/* Sub-caption: date range • Nepal time • Showing 5 of 7 • Balances follow the visible list. */}
             <p className="text-[11.5px] text-slate-400 mb-3">
-              2026-10-06 — 2026-10-06 • Nepal time • Showing {isListVisible ? visibleTransactions.length : 0} of {filteredList.length} • Balances follow the visible list.
+              {dateRangeString} • Nepal time • Showing {isListVisible ? visibleTransactions.length : 0} of {filteredList.length} • Balances follow the visible list.
             </p>
 
             {/* Table */}
@@ -1498,7 +1291,12 @@ export default function TransactionsPage() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 text-xs sm:text-[13px]">
-                    {visibleTransactions.length === 0 ? (
+                    {loading || loadError || (range.start && range.end && range.start > range.end) ? (
+                      <tr><td colSpan={9} className="py-8 text-center font-medium">
+                        {loading ? 'Loading transactions...' : loadError || 'Start date must be before end date.'}
+                        {!loading && loadError && <button type="button" onClick={() => loadData()} className="ml-3 text-blue-600 underline">Try Again</button>}
+                      </td></tr>
+                    ) : visibleTransactions.length === 0 ? (
                       <tr>
                         <td colSpan={9} className="py-8 text-center text-slate-400 font-medium">
                           No transactions found for the selected filter.
@@ -1507,10 +1305,9 @@ export default function TransactionsPage() {
                     ) : (
                       visibleTransactions.map((item, idx) => {
                         const isCredit =
-                          String(item.transactionType).toLowerCase().includes('credit') ||
-                          String(item.transactionType).toLowerCase().includes('in');
+                          isCreditTransaction(item);
 
-                        const displayDate = formatDisplayDate(item.date);
+                        const displayDate = formatDisplayDate(item.date || item.createdAt);
                         const displayTime = formatDisplayTime(item.entryTime, item.createdAt);
                         const numAmount = Number(item.amount || 0);
 
@@ -1688,9 +1485,8 @@ export default function TransactionsPage() {
             <tbody className="divide-y divide-slate-100 text-xs">
               {visibleTransactions.map((item, idx) => {
                 const isCredit =
-                  String(item.transactionType).toLowerCase().includes('credit') ||
-                  String(item.transactionType).toLowerCase().includes('in');
-                const displayDate = formatDisplayDate(item.date);
+                  isCreditTransaction(item);
+                const displayDate = formatDisplayDate(item.date || item.createdAt);
                 const displayTime = formatDisplayTime(item.entryTime, item.createdAt);
                 const numAmount = Number(item.amount || 0);
 
@@ -1764,8 +1560,9 @@ export default function TransactionsPage() {
       <CreateBillModal
         isOpen={isMakeBillOpen}
         onClose={() => setIsMakeBillOpen(false)}
-        onSuccess={() => {
-          toast.success('Bill created successfully!');
+        onSuccess={(bill, autoPrint) => {
+          loadData();
+          if (autoPrint) setPrintingBill(bill);
         }}
       />
 

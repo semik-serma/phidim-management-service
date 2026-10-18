@@ -1,9 +1,11 @@
+import { extractRecords } from './ledger';
 import api from './api';
 
 /**
  * Normalizes API response to return the actual payload
  */
 function unwrap(response) {
+  if (response?.data?.success === false) throw new Error(response.data.message || 'Request failed.');
   if (response && response.data !== undefined) {
     // If backend returns { success: true, message: '...', data: [...] }
     if (response.data && response.data.data !== undefined) {
@@ -24,7 +26,12 @@ export async function createTransaction(transactionData) {
     amount: Number(transactionData.amount),
   };
   const response = await api.post('/transaction/create-transaction', payload);
-  return unwrap(response);
+  const result = unwrap(response);
+  const transaction = result?.transaction || result;
+  if (!transaction || !(transaction._id || transaction.id)) {
+    throw new Error('The backend did not confirm a saved transaction. Refresh the list before retrying.');
+  }
+  return transaction;
 }
 
 /**
@@ -33,7 +40,7 @@ export async function createTransaction(transactionData) {
 export async function getTransactions() {
   const response = await api.get('/transaction/get-transactions');
   const data = unwrap(response);
-  return Array.isArray(data) ? data : [];
+  return extractRecords(data, 'transactions');
 }
 
 /**

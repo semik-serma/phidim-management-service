@@ -17,6 +17,7 @@ import {
   FiPrinter,
 } from 'react-icons/fi';
 import toast from 'react-hot-toast';
+import { ledgerDate, buildBillItems } from '@/lib/ledger';
 import { createBill } from '@/lib/billApi';
 import { getProducts } from '@/lib/productApi';
 import { useAuth } from '@/hooks/useAuth';
@@ -41,8 +42,8 @@ export default function CreateBillModal({ isOpen, onClose, onSuccess, onCreated 
     address: '',
     project: '',
     role: activeRole,
-    bill_date: new Date().toISOString().split('T')[0],
-    bill_time: new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true }),
+    bill_date: ledgerDate(),
+    bill_time: new Date().toLocaleTimeString('en-US', { timeZone: 'Asia/Kathmandu', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true }),
     items: [{ particular: '', qty: 1, rate: '', total: 0 }],
   });
 
@@ -59,12 +60,15 @@ export default function CreateBillModal({ isOpen, onClose, onSuccess, onCreated 
         ? user.role.toLowerCase()
         : 'admin';
       const now = new Date();
-      setBillForm((prev) => ({
+      const timer = setTimeout(() => {
+        setError('');
+        setBillForm((prev) => ({
         ...prev,
         role: currentRole,
-        bill_date: prev.bill_date || now.toISOString().split('T')[0],
-        bill_time: prev.bill_time || now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true }),
-      }));
+        bill_date: prev.bill_date || ledgerDate(now),
+        bill_time: prev.bill_time || now.toLocaleTimeString('en-US', { timeZone: 'Asia/Kathmandu', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true }),
+        }));
+      }, 0);
 
       // Load products from inventory catalog
       getProducts()
@@ -74,6 +78,7 @@ export default function CreateBillModal({ isOpen, onClose, onSuccess, onCreated 
           }
         })
         .catch((e) => console.error('Failed to load products in bill modal:', e));
+      return () => clearTimeout(timer);
     }
   }, [isOpen, user]);
 
@@ -152,7 +157,10 @@ export default function CreateBillModal({ isOpen, onClose, onSuccess, onCreated 
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (submitting) return;
     setError('');
+    const action = e.nativeEvent.submitter?.value || 'save';
+    setSubmitAction(action);
 
     if (!billForm.customer_name.trim()) {
       setError('Customer name is required.');
@@ -162,42 +170,32 @@ export default function CreateBillModal({ isOpen, onClose, onSuccess, onCreated 
       setError('Phone number is required.');
       return;
     }
-    if (!billForm.items.length) {
-      setError('At least one item is required.');
+    if (!billForm.bill_date) {
+      setError('Please select a bill date.');
       return;
     }
+    let items;
+    try { items = buildBillItems(billForm.items); }
+    catch (error) { setError(error.message); return; }
 
     const finalRole = billForm.role || activeRole || 'admin';
 
     setSubmitting(true);
     try {
-      let finalBillDate = billForm.bill_date;
-      if (billForm.bill_date && billForm.bill_time) {
-        const parsed = new Date(`${billForm.bill_date} ${billForm.bill_time}`);
-        if (!isNaN(parsed.getTime())) {
-          finalBillDate = parsed.toISOString();
-        }
-      }
-
       const payload = {
         customer_name: billForm.customer_name.trim(),
         phone_number: billForm.phone_number.trim(),
         address: billForm.address.trim(),
         project: billForm.project.trim() || 'Service Work',
         role: finalRole,
-        bill_date: finalBillDate,
+        bill_date: billForm.bill_date,
         bill_time: billForm.bill_time ? billForm.bill_time.trim() : '',
-        items: billForm.items.map((it) => ({
-          particular: it.particular.trim(),
-          qty: Number(it.qty) || 1,
-          rate: Number(it.rate) || 0,
-          total: (Number(it.qty) || 1) * (Number(it.rate) || 0),
-        })),
-        total_amount: grandTotal,
+        items,
+        total_amount: Math.round(items.reduce((sum, item) => sum + item.total, 0) * 100) / 100,
       };
 
       const res = await createBill(payload);
-      const createdBill = res?.data || res?.bill || res;
+      const createdBill = { ...payload, ...(res?.bill || res?.data || res) };
 
       // Reset form
       const nowReset = new Date();
@@ -207,8 +205,9 @@ export default function CreateBillModal({ isOpen, onClose, onSuccess, onCreated 
         address: '',
         project: '',
         role: activeRole,
-        bill_date: nowReset.toISOString().split('T')[0],
+        bill_date: ledgerDate(nowReset),
         bill_time: nowReset.toLocaleTimeString('en-US', {
+          timeZone: 'Asia/Kathmandu',
           hour: '2-digit',
           minute: '2-digit',
           second: '2-digit',
@@ -218,8 +217,8 @@ export default function CreateBillModal({ isOpen, onClose, onSuccess, onCreated 
       });
 
       toast.success('Bill created successfully!');
-      if (onSuccess) onSuccess(createdBill, submitAction === 'print');
-      if (onCreated) onCreated(createdBill);
+      if (onSuccess) Promise.resolve(onSuccess(createdBill, action === 'print')).catch(console.error);
+      if (onCreated) Promise.resolve(onCreated(createdBill)).catch(console.error);
       onClose();
     } catch (err) {
       const msg =
@@ -793,7 +792,7 @@ export default function CreateBillModal({ isOpen, onClose, onSuccess, onCreated 
             <button
               type="submit"
               disabled={submitting}
-              onClick={() => setSubmitAction('save')}
+              name="action" value="save"
               className="flex items-center gap-1.5 rounded-xl border border-[#0B5ED7] bg-white px-4 py-2 text-xs font-bold text-[#0B5ED7] shadow-xs hover:bg-blue-50 transition cursor-pointer disabled:opacity-60"
             >
               <FiCheckCircle className="h-4 w-4" />
@@ -802,7 +801,7 @@ export default function CreateBillModal({ isOpen, onClose, onSuccess, onCreated 
             <button
               type="submit"
               disabled={submitting}
-              onClick={() => setSubmitAction('print')}
+              name="action" value="print"
               className="flex items-center gap-1.5 rounded-xl bg-[#0B5ED7] px-5 py-2 text-xs font-bold text-white shadow-lg shadow-[#0B5ED7]/30 hover:bg-[#0A4FB3] transition cursor-pointer disabled:opacity-60"
             >
               {submitting && submitAction === 'print' ? (

@@ -1,8 +1,8 @@
 import axios from 'axios';
 
-export const API_BASE_URL = (
-  process.env.NEXT_PUBLIC_API_URL || 'https://api.management.phidimservice.com.np'
-).replace(/\/$/, '');
+// Keep browser requests on this origin so backend CORS and cross-site cookie
+// policies cannot prevent authenticated writes from reaching the API.
+export const API_BASE_URL = '/api/backend';
 
 const api = axios.create({
   baseURL: API_BASE_URL,

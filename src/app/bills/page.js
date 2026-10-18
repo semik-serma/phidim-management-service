@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Noto_Sans } from 'next/font/google';
 import {
   FiAlertCircle,
@@ -30,7 +30,6 @@ import {
 import toast from 'react-hot-toast';
 import { useAuth } from '@/hooks/useAuth';
 import {
-  createBill,
   deleteBill,
   getAllBills,
   exportBillsToExcel,
@@ -70,7 +69,7 @@ function normalizeBill(bill, index) {
     phoneNumber: bill.phone_number || bill.phone || '',
     address: bill.address || '',
     items: Array.isArray(bill.items) ? bill.items : [],
-    amount: Number(bill.grand_total || bill.amount || bill.total || bill.total_amount || 0),
+    amount: Number(bill.grand_total ?? bill.amount ?? bill.total ?? bill.total_amount ?? 0),
     date: bill.bill_date || bill.date || bill.createdAt || '',
     role: bill.role || 'admin',
     status: bill.status || 'Active',
@@ -83,6 +82,7 @@ function formatDate(value) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;
   return new Intl.DateTimeFormat('en', {
+    timeZone: 'Asia/Kathmandu',
     day: '2-digit',
     month: 'short',
     year: 'numeric',
@@ -91,6 +91,7 @@ function formatDate(value) {
 
 function formatTime(date) {
   return new Intl.DateTimeFormat('en', {
+    timeZone: 'Asia/Kathmandu',
     hour: '2-digit',
     minute: '2-digit',
     second: '2-digit',
@@ -130,27 +131,6 @@ export default function BillsPage() {
 
   // Bill Creation Modal State
   const [isCreateOpen, setIsCreateOpen] = useState(false);
-  const [createSubmitting, setCreateSubmitting] = useState(false);
-  const [createError, setCreateError] = useState('');
-  const [billForm, setBillForm] = useState({
-    customer_name: '',
-    phone_number: '',
-    address: '',
-    project: '',
-    role: 'admin',
-    bill_date: new Date().toISOString().split('T')[0],
-    items: [{ particular: '', qty: 1, rate: '', total: 0 }],
-  });
-
-  useEffect(() => {
-    if (isCreateOpen) {
-      setBillForm((prev) => ({
-        ...prev,
-        role: 'admin',
-      }));
-    }
-  }, [isCreateOpen]);
-
   // View Bill Details Modal State
   const [selectedBill, setSelectedBill] = useState(null);
 
@@ -178,38 +158,36 @@ export default function BillsPage() {
     status: '',
   });
 
-  const loadBills = async (overrideFilters) => {
+  const requestId = useRef(0);
+  const loadBills = useCallback(async () => {
+    if (loading || !user || !['admin', 'staff'].includes(user.role?.toLowerCase())) return;
+    const currentRequest = ++requestId.current;
     setBillsLoading(true);
     setBillsError('');
     try {
-      const filters =
-        overrideFilters !== undefined
-          ? overrideFilters
-          : adminFilters;
+      const filters = user.role?.toLowerCase() === 'admin' ? adminFilters : {};
       const data = await getAllBills(filters);
-      setBills(extractList(data).map(normalizeBill));
+      if (currentRequest === requestId.current) setBills(extractList(data).map(normalizeBill));
     } catch (error) {
-      setBillsError(
-        error.response?.data?.message || error.message || 'Unable to load bills.'
-      );
+      if (currentRequest === requestId.current) setBillsError(error.response?.data?.message || error.message || 'Unable to load bills.');
     } finally {
-      setBillsLoading(false);
+      if (currentRequest === requestId.current) setBillsLoading(false);
     }
-  };
+  }, [user, loading, adminFilters]);
 
   useEffect(() => {
-    getAdminUsers()
-      .then((res) => {
-        if (Array.isArray(res)) setAdminUsers(res);
-        else if (Array.isArray(res?.data)) setAdminUsers(res.data);
-      })
-      .catch(() => {});
-  }, []);
+    if (loading || user?.role?.toLowerCase() !== 'admin') return;
+    let cancelled = false;
+    getAdminUsers().then((res) => {
+      if (!cancelled) setAdminUsers(Array.isArray(res) ? res : res?.users || res?.data || []);
+    }).catch(() => {});
+    return () => { cancelled = true; };
+  }, [user, loading]);
 
   const handleExportExcel = async () => {
     try {
       setExporting(true);
-      const filters = adminFilters;
+      const filters = { ...(user.role?.toLowerCase() === 'admin' ? adminFilters : {}), search: search.trim() };
       const data = await exportBillsToExcel(filters);
       const blob = new Blob([data], {
         type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
@@ -230,40 +208,12 @@ export default function BillsPage() {
     }
   };
 
+  const cancelPendingLoad = useCallback(() => { requestId.current++; }, []);
   useEffect(() => {
-    let cancelled = false;
-
-    async function initBills() {
-      const userRole = (user?.role || 'staff').toLowerCase();
-      if (userRole !== 'admin' && userRole !== 'staff') {
-        setBillsLoading(false);
-        return;
-      }
-      try {
-        const filters = userRole === 'admin' ? adminFilters : {};
-        const data = await getAllBills(filters);
-        if (!cancelled) setBills(extractList(data).map(normalizeBill));
-      } catch (error) {
-        if (!cancelled) {
-          setBillsError(
-            error.response?.data?.message ||
-              error.message ||
-              'Unable to load bills.'
-          );
-        }
-      } finally {
-        if (!cancelled) setBillsLoading(false);
-      }
-    }
-
-    if (user) {
-      initBills();
-    }
-
-    return () => {
-      cancelled = true;
-    };
-  }, [user, adminFilters]);
+    // Cancel scheduled and in-flight reads when identity or filters change.
+    const timer = setTimeout(() => { loadBills(); }, 0);
+    return () => { clearTimeout(timer); cancelPendingLoad(); };
+  }, [loadBills, cancelPendingLoad]);
 
   // Enhanced search filtering across all customer, project, phone, address, items, and amounts
   const filteredBills = useMemo(() => {
@@ -302,120 +252,6 @@ export default function BillsPage() {
     [bills]
   );
 
-  // Dynamic Item row handlers
-  const handleAddItem = () => {
-    setBillForm((prev) => ({
-      ...prev,
-      items: [...prev.items, { particular: '', qty: 1, rate: '', total: 0 }],
-    }));
-  };
-
-  const handleRemoveItem = (index) => {
-    if (billForm.items.length <= 1) return;
-    setBillForm((prev) => ({
-      ...prev,
-      items: prev.items.filter((_, i) => i !== index),
-    }));
-  };
-
-  const handleItemChange = (index, field, value) => {
-    setBillForm((prev) => {
-      const nextItems = [...prev.items];
-      const item = { ...nextItems[index], [field]: value };
-
-      const qty = Number(item.qty) || 0;
-      const rate = Number(item.rate) || 0;
-      item.total = qty * rate;
-
-      nextItems[index] = item;
-      return { ...prev, items: nextItems };
-    });
-  };
-
-  const computedGrandTotal = useMemo(() => {
-    return billForm.items.reduce((sum, item) => {
-      const q = Number(item.qty) || 0;
-      const r = Number(item.rate) || 0;
-      return sum + q * r;
-    }, 0);
-  }, [billForm.items]);
-
-  // Handle Bill Creation Form Submit
-  const handleCreateBillSubmit = async (e) => {
-    e.preventDefault();
-    setCreateError('');
-
-    if (!billForm.customer_name.trim()) {
-      setCreateError('Customer name is required.');
-      return;
-    }
-    if (!billForm.phone_number.trim()) {
-      setCreateError('Phone number is required.');
-      return;
-    }
-    if (!billForm.address.trim()) {
-      setCreateError('Address is required.');
-      return;
-    }
-    if (!billForm.project.trim()) {
-      setCreateError('Project / Service description is required.');
-      return;
-    }
-
-    const validItems = billForm.items.filter((i) => i.particular.trim());
-    if (validItems.length === 0) {
-      setCreateError('Please add at least one item with a valid description.');
-      return;
-    }
-
-    const invalidItem = validItems.some(
-      (item) => Number(item.qty) <= 0 || Number(item.rate) < 0 || item.rate === ''
-    );
-    if (invalidItem) {
-      setCreateError('Please enter valid quantities and rates for all items.');
-      return;
-    }
-
-    const finalRole = billForm.role || user?.role || 'admin';
-
-    setCreateSubmitting(true);
-    try {
-      await createBill({
-        project: billForm.project.trim(),
-        customer_name: billForm.customer_name.trim(),
-        phone_number: billForm.phone_number.trim(),
-        address: billForm.address.trim(),
-        role: finalRole,
-        bill_date: billForm.bill_date,
-        items: validItems.map((item) => ({
-          particular: item.particular.trim(),
-          qty: Number(item.qty),
-          rate: Number(item.rate),
-        })),
-      });
-
-      toast.success('Bill created successfully!');
-      setIsCreateOpen(false);
-      setBillForm({
-        customer_name: '',
-        phone_number: '',
-        address: '',
-        project: '',
-        role: user?.role || 'admin',
-        bill_date: new Date().toISOString().split('T')[0],
-        items: [{ particular: '', qty: 1, rate: '', total: 0 }],
-      });
-      await loadBills();
-    } catch (err) {
-      const msg =
-        err.response?.data?.message || err.message || 'Failed to create bill.';
-      setCreateError(msg);
-      toast.error(msg);
-    } finally {
-      setCreateSubmitting(false);
-    }
-  };
-
   // Handle Bill Deletion
   const handleDeleteBill = async (id) => {
     if (!window.confirm('Are you sure you want to delete this bill?')) {
@@ -425,6 +261,8 @@ export default function BillsPage() {
     setDeletingId(id);
     try {
       await deleteBill(id);
+      requestId.current++;
+      setBillsLoading(false);
       setBills((prev) => prev.filter((b) => (b.id || b._id) !== id));
       if (selectedBill?.id === id || selectedBill?._id === id) {
         setSelectedBill(null);
@@ -736,7 +574,7 @@ export default function BillsPage() {
             </div>
 
             {/* Admin Dedicated Filters Toolbar */}
-            <div className="mt-3 rounded-xl border border-[#CFE0F5] bg-[#F8FAFD] p-3 flex flex-wrap items-center gap-3 text-xs">
+            {isAdmin && <div className="mt-3 rounded-xl border border-[#CFE0F5] bg-[#F8FAFD] p-3 flex flex-wrap items-center gap-3 text-xs">
               <span className="font-bold text-[#072A44] flex items-center gap-1">
                 <FiFilter className="h-3.5 w-3.5 text-[#0B5ED7]" /> Filters:
               </span>
@@ -774,7 +612,7 @@ export default function BillsPage() {
                     Reset Filters
                   </button>
                 )}
-              </div>
+              </div>}
 
             {/* Search Input */}
             <div className="relative mt-4">
@@ -835,7 +673,7 @@ export default function BillsPage() {
                   <p className="text-base font-bold text-rose-600">{billsError}</p>
                   <button
                     type="button"
-                    onClick={loadBills}
+                    onClick={() => loadBills()}
                     className="mt-3 rounded-lg bg-[#0B5ED7] px-4 py-1.5 text-xs font-bold text-white cursor-pointer"
                   >
                     Try Again
@@ -967,6 +805,8 @@ export default function BillsPage() {
         isOpen={isCreateOpen}
         onClose={() => setIsCreateOpen(false)}
         onSuccess={(createdBill, autoPrint) => {
+          setSearch('');
+          setAdminFilters({ role: '', userId: '', status: '' });
           loadBills();
           if (autoPrint && createdBill) {
             setPrintingBill(createdBill);

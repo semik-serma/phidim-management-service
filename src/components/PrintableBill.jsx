@@ -292,7 +292,7 @@ export default function PrintableBill({ bill }) {
   if (!bill) return null;
 
   // Extract / Normalize fields
-  const invoiceNo = bill.bill_no || bill.reference || 'Bill 001';
+  const invoiceNo = bill.bill_no || bill.billNo || bill.reference || bill._id || bill.id || '—';
   const customerName = bill.customer_name || bill.customer || '—';
   const phoneNumber = bill.phone_number || bill.phoneNumber || '—';
   const address = bill.address || '—';
@@ -309,6 +309,8 @@ export default function PrintableBill({ bill }) {
       ? bill.grand_total
       : bill.amount !== undefined
       ? bill.amount
+      : bill.total_amount !== undefined
+      ? bill.total_amount
       : items.reduce((acc, it) => acc + (Number(it.total) || (Number(it.qty) * Number(it.rate)) || 0), 0)
   );
 

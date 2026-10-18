@@ -11,6 +11,7 @@ import {
   FiX,
 } from 'react-icons/fi';
 import toast from 'react-hot-toast';
+import { ledgerDate } from '@/lib/ledger';
 import { createTransaction } from '@/lib/transactionApi';
 import { useAuth } from '@/hooks/useAuth';
 
@@ -31,7 +32,7 @@ export default function CreateTransactionModal({ isOpen, onClose, onSuccess, use
 
   const [form, setForm] = useState({
     transactionType: 'Credit / Money In',
-    date: new Date().toISOString().split('T')[0],
+    date: ledgerDate(),
     account: 'Cash',
     role: defaultRole,
     amount: '',
@@ -49,11 +50,15 @@ export default function CreateTransactionModal({ isOpen, onClose, onSuccess, use
       const activeRole = (currentUser?.role && ['admin', 'staff', 'accountant'].includes(currentUser.role.toLowerCase()))
         ? currentUser.role.toLowerCase()
         : 'admin';
-      setForm((prev) => ({
-        ...prev,
-        role: activeRole,
-        enteredBy: ROLE_ENTERED_BY_MAP[activeRole] || 'Admin',
-      }));
+      const timer = setTimeout(() => {
+        setError('');
+        setForm((prev) => ({
+          ...prev,
+          role: activeRole,
+          enteredBy: ROLE_ENTERED_BY_MAP[activeRole] || 'Admin',
+        }));
+      }, 0);
+      return () => clearTimeout(timer);
     }
   }, [isOpen, currentUser]);
 
@@ -69,9 +74,10 @@ export default function CreateTransactionModal({ isOpen, onClose, onSuccess, use
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (submitting) return;
     setError('');
 
-    if (!form.amount || Number(form.amount) <= 0) {
+    if (!form.amount || !Number.isFinite(Number(form.amount)) || Number(form.amount) <= 0) {
       setError('Please enter a valid amount greater than 0.');
       return;
     }
@@ -86,7 +92,7 @@ export default function CreateTransactionModal({ isOpen, onClose, onSuccess, use
 
     setSubmitting(true);
     try {
-      await createTransaction({
+      const result = await createTransaction({
         ...form,
         role: finalRole,
         enteredBy: finalEnteredBy,
@@ -97,7 +103,7 @@ export default function CreateTransactionModal({ isOpen, onClose, onSuccess, use
       // Reset form
       setForm({
         transactionType: 'Credit / Money In',
-        date: new Date().toISOString().split('T')[0],
+        date: ledgerDate(),
         account: 'Cash',
         role: defaultRole,
         amount: '',
@@ -107,7 +113,7 @@ export default function CreateTransactionModal({ isOpen, onClose, onSuccess, use
       });
 
       toast.success('Transaction created successfully!');
-      if (onSuccess) onSuccess();
+      if (onSuccess) Promise.resolve(onSuccess({ ...form, ...(result?.transaction || result) })).catch(console.error);
       onClose();
     } catch (err) {
       const msg =

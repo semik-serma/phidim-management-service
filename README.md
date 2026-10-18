@@ -16,6 +16,13 @@ bun dev
 
 Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
 
+Browser API requests use `/api/backend/*`. The Next.js server forwards these
+requests to `BACKEND_URL` in `.env.local` (with `NEXT_PUBLIC_API_URL` as a legacy
+fallback), preserving authentication and backend status codes. Set `BACKEND_URL`
+to the API server, not the frontend site, and restart Next.js after changing it.
+This keeps saves on the same browser origin even when the backend's CORS policy
+only allows localhost.
+
 You can start editing the page by modifying `app/page.js`. The page auto-updates as you edit the file.
 
 This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.

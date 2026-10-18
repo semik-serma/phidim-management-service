@@ -1,6 +1,8 @@
+import { extractRecords } from './ledger';
 import api from './api';
 
 function unwrap(response) {
+  if (response?.data?.success === false) throw new Error(response.data.message || 'Request failed.');
   if (response && response.data !== undefined) {
     if (response.data && response.data.data !== undefined) {
       return response.data.data;
@@ -34,7 +36,7 @@ export async function getAllBills(filters = {}) {
   const query = params.toString();
   const response = await api.get(`/bills/bills${query ? `?${query}` : ''}`);
   const data = unwrap(response);
-  return Array.isArray(data) ? data : [];
+  return extractRecords(data, 'bills');
 }
 
 /**

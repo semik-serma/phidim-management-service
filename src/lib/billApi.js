@@ -1,4 +1,4 @@
-import { extractRecords } from './ledger';
+import { billAmount, extractRecords } from './ledger';
 import api from './api';
 
 function unwrap(response) {
@@ -36,7 +36,9 @@ export async function getAllBills(filters = {}) {
   const query = params.toString();
   const response = await api.get(`/bills/bills${query ? `?${query}` : ''}`);
   const data = unwrap(response);
-  return extractRecords(data, 'bills');
+  const bills = extractRecords(data, 'bills');
+  bills.forEach(billAmount);
+  return bills;
 }
 
 /**

@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Noto_Sans } from 'next/font/google';
 import {
   FiAlertCircle,
@@ -31,6 +31,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { getAllBills } from '@/lib/billApi';
 import { getTransactions } from '@/lib/transactionApi';
 import { getNotes } from '@/lib/noteApi';
+import { billAmount, isCreditTransaction, ledgerDate, ledgerTime, sumMoney, summarizeTransactions } from '@/lib/ledger';
 import { deleteAdminUser, getAdminUsers, updateUserRole } from '@/lib/userApi';
 import UserAvatar from '@/components/UserAvatar';
 import ProfileModal from '@/components/ProfileModal';
@@ -63,14 +64,6 @@ const ROLE_BADGES = {
   },
 };
 
-function extractList(payload) {
-  if (Array.isArray(payload)) return payload;
-  if (Array.isArray(payload?.data)) return payload.data;
-  if (Array.isArray(payload?.data?.bills)) return payload.data.bills;
-  if (Array.isArray(payload?.bills)) return payload.bills;
-  return [];
-}
-
 function normalizeBill(bill, index) {
   const id = bill.id || bill._id || bill.bill_id || bill.billId || `BILL-${index + 1}`;
   return {
@@ -78,25 +71,20 @@ function normalizeBill(bill, index) {
     id,
     reference: bill.bill_no || bill.billNo || bill.number || bill.reference || id,
     customer: bill.customer || bill.customer_name || bill.customerName || bill.name || '-',
-    amount: Number(bill.amount || bill.total || bill.total_amount || bill.grand_total || 0),
-    date: bill.date || bill.bill_date || bill.created_at || bill.createdAt || '',
+    amount: billAmount(bill),
+    date: bill.bill_date || bill.date || bill.created_at || bill.createdAt || '',
   };
 }
 
 function formatDate(value) {
   if (!value) return '-';
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
-  return new Intl.DateTimeFormat('en', { day: '2-digit', month: 'short', year: 'numeric' }).format(date);
+  const day = ledgerDate(value);
+  if (!day) return '—';
+  return new Intl.DateTimeFormat('en', { timeZone: 'Asia/Kathmandu', day: '2-digit', month: 'short', year: 'numeric' }).format(new Date(`${day}T00:00:00+05:45`));
 }
 
 function formatTime(date) {
-  return new Intl.DateTimeFormat('en', {
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-    hour12: true,
-  }).format(date);
+  return ledgerTime(date);
 }
 
 export default function DashboardPage() {
@@ -120,9 +108,13 @@ export default function DashboardPage() {
 
   const [transactions, setTransactions] = useState([]);
   const [transLoading, setTransLoading] = useState(true);
+  const [transError, setTransError] = useState('');
 
   const [notes, setNotes] = useState([]);
   const [notesLoading, setNotesLoading] = useState(true);
+  const [notesError, setNotesError] = useState('');
+  const overviewRequest = useRef(0);
+  const usersRequest = useRef(0);
 
   // Users & Roles Data
   const [users, setUsers] = useState([]);
@@ -146,81 +138,80 @@ export default function DashboardPage() {
 
   // Check URL query parameters for ?tab=users
   useEffect(() => {
-    if (typeof window !== 'undefined') {
+    const timer = setTimeout(() => {
       const tabParam = new URLSearchParams(window.location.search).get('tab');
       if (tabParam === 'users') {
         setActiveTab('users');
       }
-    }
+    }, 0);
+    return () => clearTimeout(timer);
   }, []);
 
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
+    if (loading || !user) return;
+    const request = ++overviewRequest.current;
     const userRole = (user?.role || 'staff').toLowerCase();
     const canBills = userRole === 'admin' || userRole === 'staff';
     const canTrans = userRole === 'admin' || userRole === 'accountant';
 
-    // Load Bills (Admin and Staff only)
-    if (canBills) {
-      setBillsError('');
-      try {
-        const data = await getAllBills();
-        setBills(extractList(data).map(normalizeBill));
-      } catch (error) {
-        setBillsError(error.response?.data?.message || error.message || 'Unable to load bills.');
-      } finally {
-        setBillsLoading(false);
+    setBillsLoading(canBills);
+    setTransLoading(canTrans);
+    setNotesLoading(true);
+    const results = await Promise.allSettled([
+      canBills ? getAllBills() : Promise.resolve([]),
+      canTrans ? getTransactions() : Promise.resolve([]),
+      getNotes(),
+    ]);
+    if (request !== overviewRequest.current) return;
+    const apply = (result, setRecords, setError, normalize = (records) => records) => {
+      if (result.status === 'fulfilled') {
+        setRecords(normalize(result.value));
+        setError('');
+      } else {
+        setRecords([]);
+        setError(result.reason?.response?.data?.message || result.reason?.message || 'Unable to load records.');
       }
-    } else {
-      setBillsLoading(false);
-    }
+    };
+    const newest = (records) => [...records].sort((a, b) =>
+      new Date(b.createdAt || b.bill_date || b.date) - new Date(a.createdAt || a.bill_date || a.date));
+    apply(results[0], setBills, setBillsError, (records) => newest(records).map(normalizeBill));
+    apply(results[1], setTransactions, setTransError, newest);
+    apply(results[2], setNotes, setNotesError, newest);
+    setBillsLoading(false);
+    setTransLoading(false);
+    setNotesLoading(false);
+  }, [user, loading]);
 
-    // Load Transactions (Admin and Accountant only)
-    if (canTrans) {
-      try {
-        const txData = await getTransactions();
-        setTransactions(Array.isArray(txData) ? txData : []);
-      } catch (error) {
-        console.error('Error fetching transactions on dashboard:', error);
-      } finally {
-        setTransLoading(false);
-      }
-    } else {
-      setTransLoading(false);
-    }
-
-    // Load Notes (Admin, Staff, Accountant)
-    try {
-      const notesData = await getNotes();
-      setNotes(Array.isArray(notesData) ? notesData : []);
-    } catch (error) {
-      console.error('Error fetching notes on dashboard:', error);
-    } finally {
-      setNotesLoading(false);
-    }
-  };
-
-  const loadUsers = async () => {
-    if (user?.role !== 'admin') return;
+  const loadUsers = useCallback(async () => {
+    if (loading || user?.role?.toLowerCase() !== 'admin') return;
+    const request = ++usersRequest.current;
     setUsersLoading(true);
     setUsersError('');
     try {
       const data = await getAdminUsers();
-      setUsers(Array.isArray(data) ? data : []);
+      if (request === usersRequest.current) setUsers(data);
     } catch (err) {
       console.error('Error loading users:', err);
-      setUsersError(err.response?.data?.message || 'Failed to retrieve users list');
+      if (request === usersRequest.current) setUsersError(err.response?.data?.message || err.message || 'Failed to retrieve users list');
     } finally {
-      setUsersLoading(false);
+      if (request === usersRequest.current) setUsersLoading(false);
     }
-  };
+  }, [user, loading]);
 
+  const cancelRequests = useCallback(() => {
+    overviewRequest.current++;
+    usersRequest.current++;
+  }, []);
   useEffect(() => {
-    if (!user) return;
-    loadData();
-    if (user.role === 'admin') {
-      loadUsers();
-    }
-  }, [user]);
+    const refresh = () => { loadData(); loadUsers(); };
+    const timer = setTimeout(refresh, 0);
+    window.addEventListener('focus', refresh);
+    return () => {
+      clearTimeout(timer);
+      cancelRequests();
+      window.removeEventListener('focus', refresh);
+    };
+  }, [loadData, loadUsers, cancelRequests]);
 
   // Role modification
   const handleRoleChange = async (userId, newRole) => {
@@ -305,19 +296,10 @@ export default function DashboardPage() {
   const canAccessNotes = true;
 
   // Calculate totals
-  const totalBillsAmount = bills.reduce((sum, b) => sum + (b.amount || 0), 0);
-
-  let creditTotal = 0;
-  let debitTotal = 0;
-  transactions.forEach((t) => {
-    const amt = Number(t.amount || 0);
-    if (t.transactionType?.toLowerCase().includes('credit')) {
-      creditTotal += amt;
-    } else {
-      debitTotal += amt;
-    }
-  });
-  const netBalance = creditTotal - debitTotal;
+  const totalBillsAmount = sumMoney(bills.map((bill) => bill.amount));
+  const { creditTotal, debitTotal, netBalance, creditCount, debitCount } = summarizeTransactions(transactions);
+  const billMetric = (value) => billsLoading ? 'Loading…' : billsError ? 'Unavailable' : value;
+  const transactionMetric = (value) => transLoading ? 'Loading…' : transError ? 'Unavailable' : value;
 
   return (
     <div className={`${notoSans.className} min-h-screen flex bg-[#F0F4FA] text-[#0B1F3A]`}>
@@ -337,7 +319,7 @@ export default function DashboardPage() {
 
           <div className="flex flex-wrap items-center gap-3">
             <span className="rounded-xl bg-[#072A44] px-4 py-2 text-base font-extrabold tabular-nums text-[#FFD600] shadow min-w-[140px] text-center">
-              {now ? formatTime(now) : '--:--:--'}
+              {now ? formatTime(now) : '--:--:--'} NPT
             </span>
 
             {/* Admin Quick Action: Create User Button */}
@@ -805,6 +787,21 @@ export default function DashboardPage() {
             /* TAB 2: OVERVIEW (Metrics, Bills, Transactions, Notes)           */
             /* ============================================================== */
             <>
+              <div className="flex flex-wrap items-center justify-between gap-3 text-sm text-slate-600">
+                <p>All-time totals for records you can access. Bills and ledger transactions are counted separately.</p>
+                <button type="button" onClick={loadData} disabled={billsLoading || transLoading || notesLoading}
+                  className="flex items-center gap-2 rounded-lg border bg-white px-3 py-2 font-bold disabled:opacity-50">
+                  <FiRefreshCw /> Refresh totals
+                </button>
+              </div>
+              {(billsError || transError || notesError) && (
+                <div role="alert" className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">
+                  {billsError && <p>Bills: {billsError}</p>}
+                  {transError && <p>Transactions: {transError}</p>}
+                  {notesError && <p>Notes: {notesError}</p>}
+                  <p>Unavailable totals are hidden. Use Refresh totals to retry.</p>
+                </div>
+              )}
               {/* Quick Metrics */}
               <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
                 {canAccessBills && (
@@ -815,9 +812,9 @@ export default function DashboardPage() {
                         <FiFileText className="h-4 w-4" />
                       </span>
                     </div>
-                    <p className="mt-2 text-3xl font-extrabold text-[#072A44]">{bills.length}</p>
+                    <p className="mt-2 text-3xl font-extrabold text-[#072A44]">{billMetric(bills.length)}</p>
                     <p className="mt-1 text-xs text-slate-500">
-                      Amount: Rs. {totalBillsAmount.toLocaleString()}
+                      Amount: {billMetric(`Rs. ${totalBillsAmount.toLocaleString()}`)}
                     </p>
                   </div>
                 )}
@@ -833,9 +830,9 @@ export default function DashboardPage() {
                           <FiCreditCard className="h-4 w-4" />
                         </span>
                       </div>
-                      <p className="mt-2 text-3xl font-extrabold text-[#072A44]">{transactions.length}</p>
+                      <p className="mt-2 text-3xl font-extrabold text-[#072A44]">{transactionMetric(transactions.length)}</p>
                       <p className="mt-1 text-xs text-slate-500">
-                        Connected with /transaction
+                        {transactionMetric(`${creditCount} credits · ${debitCount} debits`)}
                       </p>
                     </div>
 
@@ -847,9 +844,15 @@ export default function DashboardPage() {
                         </span>
                       </div>
                       <p className="mt-2 text-3xl font-extrabold text-emerald-600">
-                        Rs. {creditTotal.toLocaleString()}
+                        {transactionMetric(`Rs. ${creditTotal.toLocaleString()}`)}
                       </p>
                       <p className="mt-1 text-xs text-slate-500">Total Credits recorded</p>
+                    </div>
+
+                    <div className="rounded-2xl bg-white p-5 shadow-sm border border-[#E1EAF6]">
+                      <p className="text-xs font-bold uppercase tracking-wider text-rose-600">Money Out</p>
+                      <p className="mt-2 text-3xl font-extrabold text-rose-600">{transactionMetric(`Rs. ${debitTotal.toLocaleString()}`)}</p>
+                      <p className="mt-1 text-xs text-slate-500">Total Debits recorded</p>
                     </div>
 
                     <div className="rounded-2xl bg-white p-5 shadow-sm border border-[#E1EAF6]">
@@ -860,10 +863,10 @@ export default function DashboardPage() {
                         </span>
                       </div>
                       <p className={`mt-2 text-3xl font-extrabold ${netBalance >= 0 ? 'text-[#072A44]' : 'text-rose-600'}`}>
-                        Rs. {netBalance.toLocaleString()}
+                        {transactionMetric(`Rs. ${netBalance.toLocaleString()}`)}
                       </p>
                       <p className="mt-1 text-xs text-slate-500">
-                        Debits: Rs. {debitTotal.toLocaleString()}
+                        Money In minus Money Out
                       </p>
                     </div>
                   </>
@@ -878,7 +881,7 @@ export default function DashboardPage() {
                         <FiBookOpen className="h-4 w-4" />
                       </span>
                     </div>
-                    <p className="mt-2 text-3xl font-extrabold text-[#072A44]">{notes.length}</p>
+                    <p className="mt-2 text-3xl font-extrabold text-[#072A44]">{notesLoading ? 'Loading…' : notesError ? 'Unavailable' : notes.length}</p>
                     <p className="mt-1 text-xs text-slate-500">
                       दैनिक टिपोट र कार्यहरू
                     </p>
@@ -958,7 +961,8 @@ export default function DashboardPage() {
                         {transLoading && (
                           <p className="px-4 py-8 text-center text-xs text-slate-500">Loading transactions...</p>
                         )}
-                        {!transLoading && transactions.length === 0 && (
+                        {!transLoading && transError && <p className="px-4 py-8 text-center text-xs text-rose-600">{transError}</p>}
+                        {!transLoading && !transError && transactions.length === 0 && (
                           <div className="px-4 py-8 text-center text-xs text-slate-500">
                             <p>No transactions yet.</p>
                             <button
@@ -970,9 +974,9 @@ export default function DashboardPage() {
                             </button>
                           </div>
                         )}
-                        {!transLoading &&
+                        {!transLoading && !transError &&
                           transactions.slice(0, 5).map((t) => {
-                            const isCredit = t.transactionType?.toLowerCase().includes('credit');
+                            const isCredit = isCreditTransaction(t);
                             const amt = Number(t.amount || 0);
                             return (
                               <div
@@ -1018,13 +1022,15 @@ export default function DashboardPage() {
                       href="/notes"
                       className="text-xs font-bold text-[#0B5ED7] hover:underline"
                     >
-                      View All Notes ({notes.length}) &rarr;
+                      View All Notes ({notesLoading ? '…' : notesError ? 'Unavailable' : notes.length}) &rarr;
                     </Link>
                   </div>
                 </div>
 
                 {notesLoading ? (
                   <p className="px-4 py-8 text-center text-xs text-slate-500">Loading notes...</p>
+                ) : notesError ? (
+                  <p className="px-4 py-8 text-center text-xs text-rose-600">{notesError}</p>
                 ) : notes.length === 0 ? (
                   <div className="mt-4 rounded-xl border border-dashed border-slate-300 p-8 text-center">
                     <p className="text-xs text-slate-500">No notes recorded yet.</p>
@@ -1055,7 +1061,7 @@ export default function DashboardPage() {
                           <div className="mt-auto rounded-lg bg-blue-50/70 p-2.5 border border-blue-100">
                             <div className="flex items-center gap-1 text-[11px] font-bold text-[#0B5ED7] mb-1">
                               <FiCheckSquare className="h-3 w-3" />
-                              <span>Tomorrow's Agenda:</span>
+                              <span>Tomorrow&apos;s Agenda:</span>
                             </div>
                             <p className="text-xs font-semibold text-[#072A44] line-clamp-2">
                               {note.tommorow_tasks || 'None'}

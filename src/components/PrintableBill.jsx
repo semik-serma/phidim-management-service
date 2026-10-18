@@ -1,6 +1,7 @@
 'use client';
 
 import React from 'react';
+import { billAmount, ledgerDate, ledgerTime, recordedBillTime } from '@/lib/ledger';
 
 /**
  * Converts a numeric amount to English words (Title Case)
@@ -203,85 +204,23 @@ export function hasRealTime(val) {
 }
 
 export function formatTimeFromDate(d) {
-  if (!d || Number.isNaN(d.getTime())) return '12:00:00 PM';
-  return d.toLocaleTimeString('en-US', {
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-    hour12: true,
-  });
+  return ledgerTime(d);
 }
 
 export function extractBillTime(bill) {
-  if (!bill) return '12:00:00 PM';
-
-  // 1. Explicit print_time override (e.g. from PrintBillModal edit)
-  if (bill.print_time && typeof bill.print_time === 'string' && bill.print_time.trim()) {
-    return bill.print_time.trim();
-  }
-  if (bill.printTime && typeof bill.printTime === 'string' && bill.printTime.trim()) {
-    return bill.printTime.trim();
-  }
-
-  // 2. Explicit bill_time, time, or entryTime string
-  const explicitStr = bill.bill_time || bill.time || bill.entryTime;
-  if (explicitStr && typeof explicitStr === 'string' && explicitStr.trim()) {
-    const bt = explicitStr.trim();
-    if (/^\d{1,2}:\d{2}(:\d{2})?\s*(AM|PM)$/i.test(bt)) {
-      return bt;
-    }
-    if (/^\d{1,2}:\d{2}(:\d{2})?$/.test(bt)) {
-      const [h, m, s = 0] = bt.split(':').map(Number);
-      const temp = new Date();
-      temp.setHours(h, m, s, 0);
-      return formatTimeFromDate(temp);
-    }
-  }
-
-  // 3. Prioritize createdAt / created_at (since MongoDB stores the exact real creation timestamp)
-  if (hasRealTime(bill.createdAt)) {
-    return formatTimeFromDate(new Date(bill.createdAt));
-  }
-  if (hasRealTime(bill.created_at)) {
-    return formatTimeFromDate(new Date(bill.created_at));
-  }
-
-  // 4. Check bill_date or date for real time
-  if (hasRealTime(bill.bill_date)) {
-    return formatTimeFromDate(new Date(bill.bill_date));
-  }
-  if (hasRealTime(bill.date)) {
-    return formatTimeFromDate(new Date(bill.date));
-  }
-
-  // 5. If createdAt is present and not UTC midnight (05:45 AM)
-  if (bill.createdAt && !Number.isNaN(new Date(bill.createdAt).getTime())) {
-    const d = new Date(bill.createdAt);
-    if (d.getUTCHours() !== 0 || d.getUTCMinutes() !== 0) {
-      return formatTimeFromDate(d);
-    }
-  }
-
-  // 6. If bill truly has no recorded time, use current local time instead of 05:45:00 AM
-  return formatTimeFromDate(new Date());
+  return recordedBillTime(bill);
 }
 
 export function extractBillDate(bill) {
-  if (!bill) return new Date().toISOString().split('T')[0];
+  if (!bill) return '—';
   const raw = bill.bill_date || bill.date || bill.createdAt;
-  if (!raw) return new Date().toISOString().split('T')[0];
+  if (!raw) return '—';
 
   if (typeof raw === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(raw.trim())) {
     return raw.trim();
   }
 
-  const d = new Date(raw);
-  if (Number.isNaN(d.getTime())) return new Date().toISOString().split('T')[0];
-  
-  const year = d.getFullYear();
-  const month = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
+  return ledgerDate(raw) || '—';
 }
 
 /**
@@ -304,15 +243,7 @@ export default function PrintableBill({ bill }) {
   const nepaliDateStr = getNepaliDate(rawDateForNepali);
 
   const items = Array.isArray(bill.items) && bill.items.length > 0 ? bill.items : [];
-  const grandTotal = Number(
-    bill.grand_total !== undefined
-      ? bill.grand_total
-      : bill.amount !== undefined
-      ? bill.amount
-      : bill.total_amount !== undefined
-      ? bill.total_amount
-      : items.reduce((acc, it) => acc + (Number(it.total) || (Number(it.qty) * Number(it.rate)) || 0), 0)
-  );
+  const grandTotal = billAmount(bill);
 
   const wordsStr = amountInWords(grandTotal);
 

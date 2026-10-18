@@ -31,7 +31,7 @@ import {
   updateTransaction,
   exportTransactionsToExcel,
 } from '@/lib/transactionApi';
-import { ledgerDate, transactionRange, filterTransactions, isCreditTransaction } from '@/lib/ledger';
+import { ledgerDate, ledgerTime, transactionRange, filterTransactions, isCreditTransaction, summarizeTransactions, statementSummary } from '@/lib/ledger';
 import UserAvatar from '@/components/UserAvatar';
 import ProfileModal from '@/components/ProfileModal';
 import Sidebar, { MobileNav } from '@/components/Sidebar';
@@ -50,18 +50,7 @@ function formatDisplayDate(value) {
 }
 
 function formatDisplayTime(entryTime, createdAt) {
-  if (entryTime && !entryTime.includes('T') && entryTime.includes(':')) {
-    return entryTime;
-  }
-  const dateObj = new Date(entryTime || createdAt || Date.now());
-  if (Number.isNaN(dateObj.getTime())) return '—';
-  return new Intl.DateTimeFormat('en', {
-    timeZone: 'Asia/Kathmandu',
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-    hour12: true,
-  }).format(dateObj);
+  return ledgerTime(entryTime, createdAt);
 }
 
 function formatTime(date) {
@@ -151,6 +140,7 @@ export default function TransactionsPage() {
         new Date(b.createdAt || b.date) - new Date(a.createdAt || a.date)));
     } catch (error) {
       if (currentRequest === requestId.current) {
+        setTransactions([]);
         setLoadError(error.response?.data?.message || error.message || 'Unable to load transactions.');
       }
     } finally {
@@ -167,14 +157,15 @@ export default function TransactionsPage() {
 
   // Export transactions to Excel with Record Type and Transaction Breakdown columns
   const handleExportExcel = async () => {
+    if (!canUseStatement()) return;
     try {
       setExporting(true);
       const filters = {};
       if (typeFilter === 'CREDIT') filters.type = 'Credit';
       if (typeFilter === 'DEBIT') filters.type = 'Debit';
       toast.loading('Generating Excel file...', { id: 'tx-excel-export' });
-      filters.startDate = range.start;
-      filters.endDate = range.end;
+      filters.startDate = range.start ? `${range.start}T00:00:00+05:45` : '';
+      filters.endDate = range.end ? `${range.end}T23:59:59.999+05:45` : '';
       if (search.trim()) filters.search = search.trim();
       if (range.start && range.end && range.start > range.end) throw new Error('Start date must be before end date.');
       const data = await exportTransactionsToExcel(filters);
@@ -230,22 +221,17 @@ export default function TransactionsPage() {
     }
   }
 
-  // Counts of transactions by type
+  // Counts follow the selected dates and search, before selecting a direction.
   const typeCounts = useMemo(() => {
-    let creditCount = 0;
-    let debitCount = 0;
-    transactions.forEach((t) => {
-      const isCredit =
-        isCreditTransaction(t);
-      if (isCredit) creditCount++;
-      else debitCount++;
-    });
+    const totals = summarizeTransactions(filterTransactions(transactions, {
+      search, start: range.start, end: range.end,
+    }));
     return {
-      all: transactions.length,
-      credit: creditCount,
-      debit: debitCount,
+      all: totals.count,
+      credit: totals.creditCount,
+      debit: totals.debitCount,
     };
-  }, [transactions]);
+  }, [transactions, search, range]);
 
   const filteredList = useMemo(() => filterTransactions(transactions, {
     type: typeFilter, search, start: range.start, end: range.end,
@@ -256,77 +242,26 @@ export default function TransactionsPage() {
     return filteredList.slice(0, visibleLimit);
   }, [filteredList, visibleLimit]);
 
-  // Aggregate stats based on visible transactions (as stated: "Balances follow the visible list")
-  const visibleStats = useMemo(() => {
-    let creditTotal = 0;
-    let debitTotal = 0;
-
-    visibleTransactions.forEach((t) => {
-      const amt = Number(t.amount || 0);
-      const isCredit =
-        isCreditTransaction(t);
-
-      if (isCredit) {
-        creditTotal += amt;
-      } else {
-        debitTotal += amt;
-      }
-    });
-
-    // Opening balance baseline
-    const openingBalance = transactions.reduce((balance, t) => {
-      const date = ledgerDate(t.date || t.createdAt);
-      if (!range.start || !date || date >= range.start) return balance;
-      return balance + (isCreditTransaction(t) ? 1 : -1) * Number(t.amount || 0);
-    }, 0);
-    const closingBalance = openingBalance + creditTotal - debitTotal;
-
-    return {
-      openingBalance,
-      creditTotal,
-      debitTotal,
-      closingBalance,
-    };
-  }, [visibleTransactions, transactions, range.start]);
+  // Summaries cover every matching record, independently of the row limit.
+  const statementStats = useMemo(() => statementSummary(transactions, {
+    type: typeFilter, search, start: range.start, end: range.end,
+  }), [transactions, typeFilter, search, range]);
 
   // Account balances reflect the loaded ledger.
-  const topCardStats = useMemo(() => {
-    let cash = 0, bank = 0, esewa = 0, khalti = 0, todayNet = 0;
-
-    transactions.forEach((t) => {
-      const amt = Number(t.amount || 0);
-      const isCredit =
-        isCreditTransaction(t);
-      const acc = String(t.account || '').toLowerCase();
-
-      const delta = isCredit ? amt : -amt;
-
-      if (formatDisplayDate(t.date || t.createdAt) === today) {
-        todayNet += delta;
-      }
-
-      if (acc.includes('bank')) {
-        bank += delta;
-      } else if (acc.includes('khalti')) {
-        khalti += delta;
-      } else if (acc.includes('esewa')) {
-        esewa += delta;
-      } else {
-        cash += delta;
-      }
-    });
-
-    return {
-      cash,
-      bank,
-      esewa,
-      khalti,
-      todayNet,
-    };
-  }, [transactions, today]);
+  const topCardStats = useMemo(() => summarizeTransactions(transactions, today), [transactions, today]);
+  const invalidRange = Boolean(range.start && range.end && range.start > range.end);
+  const metric = (value) => loading || loadError || invalidRange ? '—' : value.toLocaleString();
+  const canUseStatement = () => {
+    if (loading || loadError || invalidRange) {
+      toast.error(loadError || (invalidRange ? 'Start date must be before end date.' : 'Wait for transactions to load.'));
+      return false;
+    }
+    return true;
+  };
 
   // Print function for transactions statement
   const handlePrint = () => {
+    if (!canUseStatement()) return;
     const originalTitle = document.title;
     document.title = 'PHIDIM SERVICE — Debit & Credit Statement';
     window.print();
@@ -380,13 +315,14 @@ export default function TransactionsPage() {
 
   // Open PDF in a new tab matching Image 3
   const handleOpenPdf = () => {
+    if (!canUseStatement()) return;
     const win = window.open('', '_blank');
     if (!win) {
       toast.error('Please allow popups to open the PDF in a new tab.');
       return;
     }
 
-    const rowsHtml = visibleTransactions
+    const rowsHtml = filteredList
       .map((item) => {
         const isCredit =
           isCreditTransaction(item);
@@ -570,27 +506,27 @@ export default function TransactionsPage() {
           <!-- 3 Balance Summary Cards -->
           <div class="grid-3">
             <div class="summary-card">
-              <div class="summary-title">OPENING BALANCE</div>
-              <div class="summary-val">Rs. ${visibleStats.openingBalance.toLocaleString()}</div>
+              <div class="summary-title">OPENING (MATCHING ENTRIES)</div>
+              <div class="summary-val">Rs. ${metric(statementStats.openingBalance)}</div>
             </div>
             <div class="summary-card">
               <div class="summary-title">TOTAL CREDIT / DEBIT</div>
               <div class="summary-val">
-                <span style="color: #16a34a;">+ ${visibleStats.creditTotal.toLocaleString()}</span>
+                <span style="color: #16a34a;">+ ${metric(statementStats.creditTotal)}</span>
                 <span style="color: #94a3b8; font-weight: 400;"> / </span>
-                <span style="color: #dc2626;">— ${visibleStats.debitTotal.toLocaleString()}</span>
+                <span style="color: #dc2626;">— ${metric(statementStats.debitTotal)}</span>
               </div>
             </div>
             <div class="summary-card">
-              <div class="summary-title">CLOSING BALANCE</div>
-              <div class="summary-val">Rs. ${visibleStats.closingBalance.toLocaleString()}</div>
+              <div class="summary-title">CLOSING (MATCHING ENTRIES)</div>
+              <div class="summary-val">Rs. ${metric(statementStats.closingBalance)}</div>
             </div>
           </div>
 
           <!-- Subcaption -->
           <div style="display: flex; align-items: center; justify-content: space-between; font-size: 11px; color: #94a3b8; margin-bottom: 10px;">
             <span>
-              ${dateRangeString} • Nepal time • Showing ${visibleTransactions.length} of ${filteredList.length} • Balances follow the visible list.
+              ${dateRangeString} • Nepal time • All ${filteredList.length} matching entries. Opening balance includes earlier entries matching the search and direction.
             </span>
             <span style="font-style: italic; color: #64748b;">
               Debit and credit transactions, newest first
@@ -653,11 +589,12 @@ export default function TransactionsPage() {
 
   // Share function
   const handleShare = () => {
+    if (!canUseStatement()) return;
     if (navigator.share) {
       navigator
         .share({
           title: 'Phidim Service - Debit & Credit Statement',
-          text: `Today's Balance: Opening Rs. ${visibleStats.openingBalance.toLocaleString()} | Closing Rs. ${visibleStats.closingBalance.toLocaleString()}`,
+          text: `Today's Balance: Opening Rs. ${metric(statementStats.openingBalance)} | Closing Rs. ${metric(statementStats.closingBalance)}`,
           url: window.location.href,
         })
         .catch(() => {});
@@ -669,14 +606,15 @@ export default function TransactionsPage() {
 
   // Backup function
   const handleBackup = () => {
+    if (!canUseStatement()) return;
     try {
       const backupData = {
         system: 'Phidim Service Bill',
         module: 'debit-credit',
         exportedAt: new Date().toISOString(),
-        nepalTime: now ? now.toLocaleString() : '',
+        nepalTime: now ? now.toLocaleString('en-US', { timeZone: 'Asia/Kathmandu' }) : '',
         transactions,
-        summary: visibleStats,
+        summary: statementStats,
       };
       const blob = new Blob([JSON.stringify(backupData, null, 2)], {
         type: 'application/json',
@@ -776,7 +714,7 @@ export default function TransactionsPage() {
             {/* Clock Pill */}
             <div className="flex items-center gap-1.5 rounded-xl bg-[#072A44] px-3.5 py-1.5 sm:py-2 text-xs sm:text-sm font-extrabold tabular-nums text-[#FFD600] shadow-xs">
               <FiClock className="h-4 w-4 shrink-0 text-[#FFD600]" />
-              <span>{now ? formatTime(now) : '07:26:08 AM'}</span>
+              <span>{now ? formatTime(now) : '--:--:--'}</span>
             </div>
 
             {/* English Date Pill */}
@@ -974,7 +912,9 @@ export default function TransactionsPage() {
             </div>
           </section>
 
-          {/* Row 1: Top 5 Balance Cards */}
+          {loadError && <p role="alert" className="rounded-xl bg-rose-50 p-4 text-sm text-rose-700">{loadError} <button type="button" onClick={loadData} className="font-bold underline">Retry</button></p>}
+          <p className="text-xs text-slate-500">Account balances include all recorded transactions. Today uses Nepal time. Statement totals follow the date, search and direction filters.</p>
+          {/* Account balances */}
           <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 sm:gap-5">
             {/* CASH BALANCE */}
             <div className="rounded-2xl bg-white p-5 border border-slate-200/90 shadow-[0_1px_3px_rgba(0,0,0,0.03)] flex items-center justify-between">
@@ -983,7 +923,7 @@ export default function TransactionsPage() {
                   CASH BALANCE
                 </p>
                 <p className="mt-1 text-2xl font-black text-slate-900 tracking-tight">
-                  Rs. {topCardStats.cash.toLocaleString()}
+                  Rs. {metric(topCardStats.cash)}
                 </p>
               </div>
               <div className="text-2xl select-none" title="Cash">
@@ -998,7 +938,7 @@ export default function TransactionsPage() {
                   BANK
                 </p>
                 <p className="mt-1 text-2xl font-black text-slate-900 tracking-tight">
-                  Rs. {topCardStats.bank.toLocaleString()}
+                  Rs. {metric(topCardStats.bank)}
                 </p>
               </div>
               <div className="text-2xl select-none" title="Bank">
@@ -1013,7 +953,7 @@ export default function TransactionsPage() {
                   ESEWA
                 </p>
                 <p className="mt-1 text-2xl font-black text-slate-900 tracking-tight">
-                  Rs. {topCardStats.esewa.toLocaleString()}
+                  Rs. {metric(topCardStats.esewa)}
                 </p>
               </div>
               <div className="text-2xl select-none" title="eSewa">
@@ -1028,7 +968,7 @@ export default function TransactionsPage() {
                   KHALTI
                 </p>
                 <p className="mt-1 text-2xl font-black text-slate-900 tracking-tight">
-                  Rs. {topCardStats.khalti.toLocaleString()}
+                  Rs. {metric(topCardStats.khalti)}
                 </p>
               </div>
               <div className="text-2xl select-none" title="Khalti">
@@ -1043,12 +983,16 @@ export default function TransactionsPage() {
                   TODAY NET
                 </p>
                 <p className="mt-1 text-2xl font-black text-slate-900 tracking-tight">
-                  Rs. {topCardStats.todayNet.toLocaleString()}
+                  Rs. {metric(topCardStats.todayNet)}
                 </p>
               </div>
               <div className="text-2xl select-none" title="Today Net">
                 📈
               </div>
+            </div>
+            <div className="rounded-2xl border border-slate-200 bg-white p-5">
+              <p className="text-[11px] font-bold uppercase text-slate-400">Other Accounts</p>
+              <p className="mt-1 text-2xl font-black">Rs. {metric(topCardStats.other)}</p>
             </div>
           </section>
 
@@ -1229,15 +1173,15 @@ export default function TransactionsPage() {
               </span>
             </div>
 
-            {/* 3 Summary boxes: OPENING BALANCE | TOTAL CREDIT / DEBIT | CLOSING BALANCE */}
+            {/* 3 Summary boxes: OPENING (MATCHING ENTRIES) | TOTAL CREDIT / DEBIT | CLOSING (MATCHING ENTRIES) */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 my-5">
-              {/* OPENING BALANCE */}
+              {/* OPENING (MATCHING ENTRIES) */}
               <div className="rounded-xl border border-slate-200 p-4 bg-white">
                 <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
-                  OPENING BALANCE
+                  OPENING (MATCHING ENTRIES)
                 </p>
                 <p className="mt-1 text-lg font-bold text-slate-900">
-                  Rs. {visibleStats.openingBalance.toLocaleString()}
+                  Rs. {metric(statementStats.openingBalance)}
                 </p>
               </div>
 
@@ -1248,29 +1192,29 @@ export default function TransactionsPage() {
                 </p>
                 <p className="mt-1 text-lg font-bold">
                   <span className="text-emerald-600">
-                    + {visibleStats.creditTotal.toLocaleString()}
+                    + {metric(statementStats.creditTotal)}
                   </span>{' '}
                   <span className="text-slate-400 font-normal">/</span>{' '}
                   <span className="text-rose-600">
-                    — {visibleStats.debitTotal.toLocaleString()}
+                    — {metric(statementStats.debitTotal)}
                   </span>
                 </p>
               </div>
 
-              {/* CLOSING BALANCE */}
+              {/* CLOSING (MATCHING ENTRIES) */}
               <div className="rounded-xl border border-slate-200 p-4 bg-white">
                 <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
-                  CLOSING BALANCE
+                  CLOSING (MATCHING ENTRIES)
                 </p>
                 <p className="mt-1 text-lg font-bold text-slate-900">
-                  Rs. {visibleStats.closingBalance.toLocaleString()}
+                  Rs. {metric(statementStats.closingBalance)}
                 </p>
               </div>
             </div>
 
-            {/* Sub-caption: date range • Nepal time • Showing 5 of 7 • Balances follow the visible list. */}
+            {/* Sub-caption: date range • Nepal time • Showing 5 of 7 • Balances include all matching entries, including rows beyond the display limit. */}
             <p className="text-[11.5px] text-slate-400 mb-3">
-              {dateRangeString} • Nepal time • Showing {isListVisible ? visibleTransactions.length : 0} of {filteredList.length} • Balances follow the visible list.
+              {dateRangeString} • Nepal time • Showing {isListVisible ? visibleTransactions.length : 0} of {filteredList.length} • Balances include all matching entries, including rows beyond the display limit.
             </p>
 
             {/* Table */}
@@ -1426,10 +1370,10 @@ export default function TransactionsPage() {
           <div className="grid grid-cols-3 gap-4 mb-4">
             <div className="rounded-xl border border-slate-200/90 p-4 bg-white shadow-xs">
               <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
-                OPENING BALANCE
+                OPENING (MATCHING ENTRIES)
               </p>
               <p className="mt-1 text-xl font-extrabold text-slate-900">
-                Rs. {visibleStats.openingBalance.toLocaleString()}
+                Rs. {metric(statementStats.openingBalance)}
               </p>
             </div>
 
@@ -1439,21 +1383,21 @@ export default function TransactionsPage() {
               </p>
               <p className="mt-1 text-xl font-extrabold">
                 <span className="text-emerald-600">
-                  + {visibleStats.creditTotal.toLocaleString()}
+                  + {metric(statementStats.creditTotal)}
                 </span>{' '}
                 <span className="text-slate-400 font-normal">/</span>{' '}
                 <span className="text-rose-600">
-                  — {visibleStats.debitTotal.toLocaleString()}
+                  — {metric(statementStats.debitTotal)}
                 </span>
               </p>
             </div>
 
             <div className="rounded-xl border border-slate-200/90 p-4 bg-white shadow-xs">
               <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
-                CLOSING BALANCE
+                CLOSING (MATCHING ENTRIES)
               </p>
               <p className="mt-1 text-xl font-extrabold text-slate-900">
-                Rs. {visibleStats.closingBalance.toLocaleString()}
+                Rs. {metric(statementStats.closingBalance)}
               </p>
             </div>
           </div>
@@ -1461,7 +1405,7 @@ export default function TransactionsPage() {
           {/* Subcaption */}
           <div className="flex items-center justify-between text-[11px] text-slate-400 mb-2.5 font-normal">
             <span>
-              {dateRangeString} • Nepal time • Showing {visibleTransactions.length} of {filteredList.length} • Balances follow the visible list.
+              {dateRangeString} • Nepal time • All {filteredList.length} matching entries. Opening balance includes earlier entries matching the search and direction.
             </span>
             <span className="text-slate-500 font-normal italic">
               Debit and credit transactions, newest first
@@ -1483,7 +1427,7 @@ export default function TransactionsPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 text-xs">
-              {visibleTransactions.map((item, idx) => {
+              {filteredList.map((item, idx) => {
                 const isCredit =
                   isCreditTransaction(item);
                 const displayDate = formatDisplayDate(item.date || item.createdAt);

@@ -22,6 +22,7 @@ import {
   FiTrash2,
   FiX,
 } from 'react-icons/fi';
+import { ledgerDate } from '@/lib/ledger';
 import { useAuth } from '@/hooks/useAuth';
 import { deleteNote, getNotes } from '@/lib/noteApi';
 import UserAvatar from '@/components/UserAvatar';
@@ -41,19 +42,12 @@ function toNepaliDigits(str) {
   return String(str || '').replace(/[0-9]/g, (d) => nepaliDigits[Number(d)]);
 }
 
-function formatDateYMD(d) {
-  const date = new Date(d);
-  if (Number.isNaN(date.getTime())) return '';
-  const y = date.getFullYear();
-  const m = String(date.getMonth() + 1).padStart(2, '0');
-  const day = String(date.getDate()).padStart(2, '0');
-  return `${y}-${m}-${day}`;
-}
+function formatDateYMD(value) { return ledgerDate(value); }
 
 function formatEnglishDate(dateObj) {
   const d = new Date(dateObj);
   if (Number.isNaN(d.getTime())) return '';
-  return new Intl.DateTimeFormat('en-US', {
+  return new Intl.DateTimeFormat('en-US', { timeZone: 'Asia/Kathmandu',
     weekday: 'short',
     year: 'numeric',
     month: 'short',
@@ -65,7 +59,7 @@ function formatNoteTime(dateStr) {
   if (!dateStr) return '';
   const d = new Date(dateStr);
   if (Number.isNaN(d.getTime())) return '';
-  return new Intl.DateTimeFormat('en-US', {
+  return new Intl.DateTimeFormat('en-US', { timeZone: 'Asia/Kathmandu',
     hour: '2-digit',
     minute: '2-digit',
     hour12: true,
@@ -76,7 +70,7 @@ function formatDisplayDate(dateStr) {
   if (!dateStr) return '-';
   const d = new Date(dateStr);
   if (Number.isNaN(d.getTime())) return String(dateStr);
-  return new Intl.DateTimeFormat('en-US', {
+  return new Intl.DateTimeFormat('en-US', { timeZone: 'Asia/Kathmandu',
     month: 'short',
     day: 'numeric',
     year: 'numeric',
@@ -103,11 +97,11 @@ export default function NotesPage() {
 
   // Live Clock
   useEffect(() => {
-    setNow(new Date());
+    const initial = setTimeout(() => setNow(new Date()), 0);
     const timer = setInterval(() => {
       setNow(new Date());
     }, 1000);
-    return () => clearInterval(timer);
+    return () => { clearTimeout(initial); clearInterval(timer); };
   }, []);
 
   // Fetch Notes
@@ -127,7 +121,8 @@ export default function NotesPage() {
 
   useEffect(() => {
     if (!authLoading && user) {
-      fetchNotesList();
+      const timer = setTimeout(() => fetchNotesList(), 0);
+      return () => clearTimeout(timer);
     }
   }, [authLoading, user]);
 
@@ -233,7 +228,7 @@ export default function NotesPage() {
               <FiClock className="h-4 w-4 shrink-0 text-[#FFD600]" />
               <span>
                 {now
-                  ? new Intl.DateTimeFormat('en-US', {
+                  ? new Intl.DateTimeFormat('en-US', { timeZone: 'Asia/Kathmandu',
                       hour: '2-digit',
                       minute: '2-digit',
                       second: '2-digit',
@@ -330,7 +325,7 @@ export default function NotesPage() {
             <div className="rounded-2xl bg-white p-4 sm:p-5 border-2 border-slate-200/80 shadow-xs flex items-center justify-between">
               <div>
                 <p className="text-[11px] sm:text-xs font-bold uppercase tracking-wider text-slate-500">
-                  Today's Notes
+                  Today&apos;s Notes
                 </p>
                 <p className="text-xl sm:text-2xl font-black text-emerald-700 mt-1">
                   {stats.today}
@@ -345,7 +340,7 @@ export default function NotesPage() {
             <div className="rounded-2xl bg-white p-4 sm:p-5 border-2 border-slate-200/80 shadow-xs flex items-center justify-between">
               <div>
                 <p className="text-[11px] sm:text-xs font-bold uppercase tracking-wider text-slate-500">
-                  Tomorrow's Tasks
+                  Tomorrow&apos;s Tasks
                 </p>
                 <p className="text-xl sm:text-2xl font-black text-[#0B5ED7] mt-1">
                   {stats.tasks}
@@ -520,7 +515,7 @@ export default function NotesPage() {
                     <div className="p-4 sm:p-5 flex-1 flex flex-col space-y-4">
                       <div>
                         <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400 mb-1">
-                          Today's Details
+                          Today&apos;s Details
                         </p>
                         <p className="text-sm text-slate-700 font-normal leading-relaxed whitespace-pre-line">
                           {note.content}
@@ -532,7 +527,7 @@ export default function NotesPage() {
                         <div className="flex items-center gap-1.5 mb-2">
                           <FiCheckSquare className="h-4 w-4 text-[#0B5ED7]" />
                           <span className="text-xs font-bold uppercase tracking-wider text-[#072A44]">
-                            Tomorrow's Agenda (भोलिको कार्य)
+                            Tomorrow&apos;s Agenda (भोलिको कार्य)
                           </span>
                         </div>
                         {taskLines.length > 0 ? (

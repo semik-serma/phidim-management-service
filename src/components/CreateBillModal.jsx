@@ -17,7 +17,7 @@ import {
   FiPrinter,
 } from 'react-icons/fi';
 import toast from 'react-hot-toast';
-import { ledgerDate, buildBillItems } from '@/lib/ledger';
+import { ledgerDate, ledgerTimestamp, buildBillItems, moneyMinor, sumMoney } from '@/lib/ledger';
 import { createBill } from '@/lib/billApi';
 import { getProducts } from '@/lib/productApi';
 import { useAuth } from '@/hooks/useAuth';
@@ -63,10 +63,10 @@ export default function CreateBillModal({ isOpen, onClose, onSuccess, onCreated 
       const timer = setTimeout(() => {
         setError('');
         setBillForm((prev) => ({
-        ...prev,
-        role: currentRole,
-        bill_date: prev.bill_date || ledgerDate(now),
-        bill_time: prev.bill_time || now.toLocaleTimeString('en-US', { timeZone: 'Asia/Kathmandu', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true }),
+          ...prev,
+          role: currentRole,
+          bill_date: ledgerDate(now),
+          bill_time: now.toLocaleTimeString('en-US', { timeZone: 'Asia/Kathmandu', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true }),
         }));
       }, 0);
 
@@ -105,7 +105,7 @@ export default function CreateBillModal({ isOpen, onClose, onSuccess, onCreated 
       const target = { ...nextItems[index], [field]: value };
       const qty = parseFloat(target.qty) || 0;
       const rate = parseFloat(target.rate) || 0;
-      target.total = qty * rate;
+      target.total = Number.isFinite(qty * rate) ? moneyMinor(qty * rate) / 100 : 0;
       nextItems[index] = target;
       return { ...prev, items: nextItems };
     });
@@ -153,7 +153,7 @@ export default function CreateBillModal({ isOpen, onClose, onSuccess, onCreated 
     toast.success(`Added "${product.name}" to bill items`);
   };
 
-  const grandTotal = billForm.items.reduce((sum, item) => sum + (item.total || 0), 0);
+  const grandTotal = sumMoney(billForm.items.map((item) => item.total || 0));
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -168,6 +168,10 @@ export default function CreateBillModal({ isOpen, onClose, onSuccess, onCreated 
     }
     if (!billForm.phone_number.trim()) {
       setError('Phone number is required.');
+      return;
+    }
+    if (!billForm.address.trim()) {
+      setError('Customer address is required.');
       return;
     }
     if (!billForm.bill_date) {
@@ -188,7 +192,7 @@ export default function CreateBillModal({ isOpen, onClose, onSuccess, onCreated 
         address: billForm.address.trim(),
         project: billForm.project.trim() || 'Service Work',
         role: finalRole,
-        bill_date: billForm.bill_date,
+        bill_date: ledgerTimestamp(billForm.bill_date, billForm.bill_time || '00:00'),
         bill_time: billForm.bill_time ? billForm.bill_time.trim() : '',
         items,
         total_amount: Math.round(items.reduce((sum, item) => sum + item.total, 0) * 100) / 100,
@@ -302,6 +306,7 @@ export default function CreateBillModal({ isOpen, onClose, onSuccess, onCreated 
                     type="button"
                     onClick={() => {
                       const nowTime = new Date().toLocaleTimeString('en-US', {
+                        timeZone: 'Asia/Kathmandu',
                         hour: '2-digit',
                         minute: '2-digit',
                         second: '2-digit',

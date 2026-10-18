@@ -1,9 +1,11 @@
 import api from './api';
+import { extractRecords } from './ledger';
 
 /**
  * Normalizes API response to return the actual payload
  */
 function unwrap(response) {
+  if (response?.data?.success === false) throw new Error(response.data.message || 'Request failed.');
   if (response && response.data !== undefined) {
     if (response.data && response.data.data !== undefined) {
       return response.data.data;
@@ -19,9 +21,7 @@ function unwrap(response) {
 export async function getNotes() {
   const response = await api.get('/note/get-notes');
   const data = unwrap(response);
-  if (Array.isArray(data)) return data;
-  if (Array.isArray(data?.notes)) return data.notes;
-  return [];
+  return extractRecords(data, 'notes');
 }
 
 /**

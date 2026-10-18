@@ -51,7 +51,7 @@ const ROLE_BADGES = {
 };
 
 function formatTime(date) {
-  return new Intl.DateTimeFormat('en', {
+  return new Intl.DateTimeFormat('en', { timeZone: 'Asia/Kathmandu',
     hour: '2-digit',
     minute: '2-digit',
     second: '2-digit',
@@ -99,7 +99,8 @@ export default function UsersManagementPage() {
 
   useEffect(() => {
     if (!authLoading && isAdmin) {
-      fetchUsers();
+      const timer = setTimeout(() => fetchUsers(), 0);
+      return () => clearTimeout(timer);
     }
   }, [authLoading, isAdmin]);
 
@@ -397,7 +398,7 @@ export default function UsersManagementPage() {
                         .slice(0, 2);
 
                       const createdFormatted = u.createdAt
-                        ? new Date(u.createdAt).toLocaleDateString('en-US', {
+                        ? new Date(u.createdAt).toLocaleDateString('en-US', { timeZone: 'Asia/Kathmandu',
                             year: 'numeric',
                             month: 'short',
                             day: 'numeric',

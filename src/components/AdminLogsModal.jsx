@@ -35,7 +35,8 @@ export default function AdminLogsModal({ onClose }) {
   };
 
   useEffect(() => {
-    fetchLogs();
+    const timer = setTimeout(() => fetchLogs(), 0);
+    return () => clearTimeout(timer);
   }, []);
 
   const getActionBadge = (action) => {

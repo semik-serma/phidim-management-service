@@ -97,7 +97,7 @@ export default function CreateNoteModal({ isOpen, onClose, onSuccess }) {
 
           <div>
             <label className="block text-xs font-bold uppercase tracking-wider text-[#072A44] mb-1.5 flex items-center justify-between">
-              <span>Today's Notes / Content <span className="text-rose-500">*</span></span>
+              <span>Today&apos;s Notes / Content <span className="text-rose-500">*</span></span>
               <span className="text-[11px] font-normal text-slate-400">विस्तृत विवरण</span>
             </label>
             <textarea
@@ -114,7 +114,7 @@ export default function CreateNoteModal({ isOpen, onClose, onSuccess }) {
             <label className="block text-xs font-bold uppercase tracking-wider text-[#072A44] mb-1.5 flex items-center justify-between">
               <span className="flex items-center gap-1.5 text-[#0B5ED7]">
                 <FiCheckSquare className="h-3.5 w-3.5" />
-                Tomorrow's Tasks / Agenda <span className="text-rose-500">*</span>
+                Tomorrow&apos;s Tasks / Agenda <span className="text-rose-500">*</span>
               </span>
               <span className="text-[11px] font-normal text-slate-400">भोलिको कार्य</span>
             </label>

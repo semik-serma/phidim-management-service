@@ -29,6 +29,7 @@ import {
 } from 'react-icons/fi';
 import toast from 'react-hot-toast';
 import { useAuth } from '@/hooks/useAuth';
+import { billAmount, sumMoney } from '@/lib/ledger';
 import {
   deleteBill,
   getAllBills,
@@ -69,7 +70,7 @@ function normalizeBill(bill, index) {
     phoneNumber: bill.phone_number || bill.phone || '',
     address: bill.address || '',
     items: Array.isArray(bill.items) ? bill.items : [],
-    amount: Number(bill.grand_total ?? bill.amount ?? bill.total ?? bill.total_amount ?? 0),
+    amount: billAmount(bill),
     date: bill.bill_date || bill.date || bill.createdAt || '',
     role: bill.role || 'admin',
     status: bill.status || 'Active',
@@ -169,7 +170,10 @@ export default function BillsPage() {
       const data = await getAllBills(filters);
       if (currentRequest === requestId.current) setBills(extractList(data).map(normalizeBill));
     } catch (error) {
-      if (currentRequest === requestId.current) setBillsError(error.response?.data?.message || error.message || 'Unable to load bills.');
+      if (currentRequest === requestId.current) {
+        setBills([]);
+        setBillsError(error.response?.data?.message || error.message || 'Unable to load bills.');
+      }
     } finally {
       if (currentRequest === requestId.current) setBillsLoading(false);
     }
@@ -248,7 +252,7 @@ export default function BillsPage() {
   }, [bills, search]);
 
   const totalAmount = useMemo(
-    () => bills.reduce((sum, b) => sum + (b.amount || 0), 0),
+    () => sumMoney(bills.map((bill) => bill.amount)),
     [bills]
   );
 
@@ -443,7 +447,7 @@ export default function BillsPage() {
             <div className="rounded-2xl bg-white px-6 py-5 shadow-sm border border-[#E1EAF6] flex items-center justify-between">
               <div>
                 <p className="text-xs font-bold uppercase tracking-wider text-slate-500">Total Bills</p>
-                <p className="mt-2 text-3xl font-extrabold text-[#072A44]">{bills.length}</p>
+                <p className="mt-2 text-3xl font-extrabold text-[#072A44]">{billsLoading ? 'Loading…' : billsError ? 'Unavailable' : bills.length}</p>
               </div>
               <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-50 text-[#0B5ED7]">
                 <FiFileText className="h-5 w-5" />
@@ -454,7 +458,7 @@ export default function BillsPage() {
               <div>
                 <p className="text-xs font-bold uppercase tracking-wider text-slate-500">Total Billed Amount</p>
                 <p className="mt-2 text-3xl font-extrabold text-[#072A44]">
-                  Rs. {totalAmount.toLocaleString()}
+                  {billsLoading ? 'Loading…' : billsError ? 'Unavailable' : `Rs. ${totalAmount.toLocaleString()}`}
                 </p>
               </div>
               <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-50 text-emerald-600 font-bold text-sm">

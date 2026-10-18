@@ -8,9 +8,9 @@ export default function PrintBillModal({ bill, isOpen, onClose }) {
   const [customTime, setCustomTime] = useState('');
 
   useEffect(() => {
-    if (bill) {
-      setCustomTime(extractBillTime(bill));
-    }
+    const timer = setTimeout(() => {
+      if (bill) setCustomTime(extractBillTime(bill));
+    }, 0);
     // Preload logo and signature images to ensure instant, glitch-free print rendering
     if (typeof window !== 'undefined') {
       const img1 = new Image();
@@ -18,6 +18,7 @@ export default function PrintBillModal({ bill, isOpen, onClose }) {
       const img2 = new Image();
       img2.src = '/signature_original.png?v=4';
     }
+    return () => clearTimeout(timer);
   }, [bill, isOpen]);
 
   if (!isOpen || !bill) return null;

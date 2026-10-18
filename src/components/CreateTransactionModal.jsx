@@ -54,6 +54,7 @@ export default function CreateTransactionModal({ isOpen, onClose, onSuccess, use
         setError('');
         setForm((prev) => ({
           ...prev,
+          date: ledgerDate(),
           role: activeRole,
           enteredBy: ROLE_ENTERED_BY_MAP[activeRole] || 'Admin',
         }));

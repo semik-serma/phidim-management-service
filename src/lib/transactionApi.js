@@ -1,4 +1,4 @@
-import { extractRecords } from './ledger';
+import { extractRecords, summarizeTransactions } from './ledger';
 import api from './api';
 
 /**
@@ -40,7 +40,9 @@ export async function createTransaction(transactionData) {
 export async function getTransactions() {
   const response = await api.get('/transaction/get-transactions');
   const data = unwrap(response);
-  return extractRecords(data, 'transactions');
+  const transactions = extractRecords(data, 'transactions');
+  summarizeTransactions(transactions);
+  return transactions;
 }
 
 /**

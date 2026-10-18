@@ -7,7 +7,7 @@ const routeSource = await readFile(new URL('../src/app/api/backend/[...path]/rou
 const { POST, GET } = await load(routeSource);
 const transactionSource = await readFile(new URL('../src/lib/transactionApi.js', import.meta.url), 'utf8');
 const { createTransaction } = await load(transactionSource
-  .replace("import { extractRecords } from './ledger';", '')
+  .replace(/import \{[^}]+\} from '\.\/ledger';/, '')
   .replace("import api from './api';", 'const api = { post: (...args) => globalThis.__transactionPost(...args) };'));
 
 test('transaction saves reach the backend with body and Bearer auth, without stale cookies', async (t) => {

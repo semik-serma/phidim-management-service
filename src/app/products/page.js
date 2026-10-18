@@ -153,8 +153,8 @@ export default function ProductsPage() {
   };
 
   useEffect(() => {
-    fetchProductList();
-    fetchCategoryList();
+    const timer = setTimeout(() => { fetchProductList(); fetchCategoryList(); }, 0);
+    return () => clearTimeout(timer);
   }, []);
 
   const handleCreateQuickCategory = async () => {

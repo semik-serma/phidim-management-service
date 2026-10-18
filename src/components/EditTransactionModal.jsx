@@ -12,6 +12,7 @@ import {
 } from 'react-icons/fi';
 import toast from 'react-hot-toast';
 import { useAuth } from '@/hooks/useAuth';
+import { isCreditTransaction, ledgerDate, ledgerTime, ledgerTimestamp } from '@/lib/ledger';
 
 const ROLE_ENTERED_BY_MAP = {
   admin: 'Admin',
@@ -46,42 +47,28 @@ export default function EditTransactionModal({
 
   useEffect(() => {
     if (transaction) {
-      const d = transaction.date
-        ? new Date(transaction.date).toISOString().split('T')[0]
-        : new Date().toISOString().split('T')[0];
-
-      let t = transaction.entryTime || '';
-      if (t && t.includes('T')) {
-        try {
-          t = new Intl.DateTimeFormat('en', {
-            hour: '2-digit',
-            minute: '2-digit',
-            second: '2-digit',
-            hour12: true,
-          }).format(new Date(t));
-        } catch {
-          // keep as is
-        }
-      }
+      const d = ledgerDate(transaction.date || transaction.createdAt);
+      const t = ledgerTime(transaction.entryTime, transaction.createdAt);
 
       const txRole = (transaction.role && ['admin', 'staff', 'accountant'].includes(transaction.role.toLowerCase()))
         ? transaction.role.toLowerCase()
         : 'admin';
 
-      setForm({
-        transactionType: transaction.transactionType?.toLowerCase().includes('debit')
-          ? 'Debit / Money Out'
-          : 'Credit / Money In',
-        date: d,
-        account: transaction.account || 'Cash',
-        role: txRole,
-        amount: transaction.amount || '',
-        reference: transaction.reference || '',
-        description: transaction.description || '',
-        enteredBy: transaction.enteredBy || ROLE_ENTERED_BY_MAP[txRole] || 'Admin',
-        entryTime: t || '07:00:00 AM',
-      });
-      setError('');
+      const timer = setTimeout(() => {
+        setForm({
+          transactionType: isCreditTransaction(transaction) ? 'Credit / Money In' : 'Debit / Money Out',
+          date: d,
+          account: transaction.account || 'Cash',
+          role: txRole,
+          amount: transaction.amount || '',
+          reference: transaction.reference || '',
+          description: transaction.description || '',
+          enteredBy: transaction.enteredBy || ROLE_ENTERED_BY_MAP[txRole] || 'Admin',
+          entryTime: t === '—' ? '' : t,
+        });
+        setError('');
+      }, 0);
+      return () => clearTimeout(timer);
     }
   }, [transaction]);
 
@@ -97,9 +84,10 @@ export default function EditTransactionModal({
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (saving || deleting) return;
     setError('');
 
-    if (!form.amount || Number(form.amount) <= 0) {
+    if (!form.amount || !Number.isFinite(Number(form.amount)) || Number(form.amount) <= 0) {
       setError('Please enter a valid amount greater than 0.');
       return;
     }
@@ -121,6 +109,11 @@ export default function EditTransactionModal({
         role: finalRole,
         enteredBy: finalEnteredBy,
         amount: Number(form.amount),
+        // Preserve the recorded instant if time was not edited. A changed clock
+        // is interpreted on the selected business date in Nepal.
+        entryTime: form.entryTime === ledgerTime(transaction.entryTime, transaction.createdAt) &&
+          transaction.entryTime && !Number.isNaN(new Date(transaction.entryTime).getTime())
+          ? transaction.entryTime : ledgerTimestamp(form.date, form.entryTime),
       });
       toast.success('Transaction updated successfully!');
       onClose();

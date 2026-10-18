@@ -1,6 +1,8 @@
 import api from './api';
+import { extractRecords } from './ledger';
 
 function unwrap(response) {
+  if (response?.data?.success === false) throw new Error(response.data.message || 'Request failed.');
   if (response && response.data !== undefined) {
     if (response.data && response.data.data !== undefined) {
       return response.data.data;
@@ -16,7 +18,7 @@ function unwrap(response) {
 export async function getAdminUsers() {
   const response = await api.get('/admin/users');
   const data = unwrap(response);
-  return Array.isArray(data) ? data : [];
+  return extractRecords(data, 'users');
 }
 
 /**

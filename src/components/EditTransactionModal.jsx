@@ -6,13 +6,15 @@ import {
   FiCheckCircle,
   FiEdit3,
   FiLayers,
-  FiLock,
   FiTrash2,
   FiX,
 } from 'react-icons/fi';
 import toast from 'react-hot-toast';
+import FormDialog from './FormDialog';
+import { timeInputValue } from '@/lib/formFields';
+import { transactionFormErrors } from '@/lib/transactionForm';
 import { useAuth } from '@/hooks/useAuth';
-import { isCreditTransaction, ledgerDate, ledgerTime, ledgerTimestamp } from '@/lib/ledger';
+import { isCreditTransaction, ledgerDate, ledgerTimestamp } from '@/lib/ledger';
 
 const ROLE_ENTERED_BY_MAP = {
   admin: 'Admin',
@@ -44,11 +46,13 @@ export default function EditTransactionModal({
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState('');
+  const fieldErrors = transactionFormErrors(form);
+  const isIncomplete = Object.keys(fieldErrors).length > 0;
 
   useEffect(() => {
-    if (transaction) {
+    if (isOpen && transaction) {
       const d = ledgerDate(transaction.date || transaction.createdAt);
-      const t = ledgerTime(transaction.entryTime, transaction.createdAt);
+      const t = timeInputValue(transaction.entryTime, transaction.createdAt);
 
       const txRole = (transaction.role && ['admin', 'staff', 'accountant'].includes(transaction.role.toLowerCase()))
         ? transaction.role.toLowerCase()
@@ -64,13 +68,13 @@ export default function EditTransactionModal({
           reference: transaction.reference || '',
           description: transaction.description || '',
           enteredBy: transaction.enteredBy || ROLE_ENTERED_BY_MAP[txRole] || 'Admin',
-          entryTime: t === '—' ? '' : t,
+          entryTime: t,
         });
         setError('');
       }, 0);
       return () => clearTimeout(timer);
     }
-  }, [transaction]);
+  }, [isOpen, transaction]);
 
   const handleRoleChange = (newRole) => {
     setForm((prev) => ({
@@ -87,31 +91,27 @@ export default function EditTransactionModal({
     if (saving || deleting) return;
     setError('');
 
-    if (!form.amount || !Number.isFinite(Number(form.amount)) || Number(form.amount) <= 0) {
-      setError('Please enter a valid amount greater than 0.');
+    const [missingField, message] = Object.entries(fieldErrors)[0] || [];
+    if (missingField) {
+      setError(message);
+      e.currentTarget.elements.namedItem(missingField)?.focus();
       return;
     }
-    if (!form.date) {
-      setError('Please select a date.');
-      return;
-    }
-
-    const finalRole = form.role || 'admin';
-    const finalEnteredBy = (form.enteredBy && form.enteredBy.trim())
-      ? form.enteredBy.trim()
-      : (ROLE_ENTERED_BY_MAP[finalRole] || 'Admin');
 
     setSaving(true);
     try {
       await onSave({
         ...transaction,
         ...form,
-        role: finalRole,
-        enteredBy: finalEnteredBy,
+        role: form.role,
+        enteredBy: form.enteredBy.trim(),
+        reference: form.reference.trim(),
+        description: form.description.trim(),
         amount: Number(form.amount),
         // Preserve the recorded instant if time was not edited. A changed clock
         // is interpreted on the selected business date in Nepal.
-        entryTime: form.entryTime === ledgerTime(transaction.entryTime, transaction.createdAt) &&
+        entryTime: form.date === ledgerDate(transaction.date || transaction.createdAt) &&
+          form.entryTime === timeInputValue(transaction.entryTime, transaction.createdAt) &&
           transaction.entryTime && !Number.isNaN(new Date(transaction.entryTime).getTime())
           ? transaction.entryTime : ledgerTimestamp(form.date, form.entryTime),
       });
@@ -142,8 +142,8 @@ export default function EditTransactionModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 overflow-y-auto">
-      <div className="w-full max-w-xl rounded-3xl bg-white p-7 shadow-2xl border border-[#CFE0F5] my-8 animate-in fade-in zoom-in-95 max-h-[92vh] flex flex-col">
+    <FormDialog label="Edit Transaction" onClose={onClose} busy={saving || deleting}>
+      <div className="w-full max-w-xl rounded-3xl bg-white p-4 sm:p-7 shadow-2xl border border-[#CFE0F5] max-h-[calc(100dvh-2rem)] min-h-0 flex flex-col">
         <div className="flex items-center justify-between border-b border-[#E1EAF6] pb-4 shrink-0">
           <div>
             <h3 className="text-xl font-extrabold text-[#072A44]">Edit Transaction</h3>
@@ -153,6 +153,8 @@ export default function EditTransactionModal({
           </div>
           <button
             type="button"
+            disabled={saving || deleting}
+            aria-label="Close dialog"
             onClick={onClose}
             className="rounded-full p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-700 transition cursor-pointer"
           >
@@ -161,13 +163,13 @@ export default function EditTransactionModal({
         </div>
 
         {error && (
-          <div className="mt-4 rounded-xl bg-rose-50 p-3.5 border border-rose-200 text-xs font-semibold text-rose-700 flex items-center gap-2 shrink-0">
+          <div role="alert" className="mt-4 rounded-xl bg-rose-50 p-3.5 border border-rose-200 text-xs font-semibold text-rose-700 flex items-center gap-2 shrink-0">
             <FiAlertCircle className="h-4 w-4 shrink-0 text-rose-600" />
             <span>{error}</span>
           </div>
         )}
 
-        <form onSubmit={handleSubmit} className="mt-5 space-y-4 overflow-y-auto pr-1">
+        <form onSubmit={handleSubmit} className="mt-5 space-y-4 min-h-0 overflow-y-auto overscroll-contain pr-1">
           {/* SECTION 1: SELECTABLE OPTIONS */}
           <div className="rounded-2xl border border-blue-100 bg-[#F4F8FD] p-4 space-y-3">
             <div className="flex items-center justify-between">
@@ -186,10 +188,12 @@ export default function EditTransactionModal({
 
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div>
-                <label className="block text-xs font-bold uppercase tracking-wider text-[#072A44] mb-1.5">
+                <label htmlFor="edittransactionmodal-transactionType" className="block text-xs font-bold uppercase tracking-wider text-[#072A44] mb-1.5">
                   Transaction Type <span className="text-rose-500">*</span>
                 </label>
                 <select
+                  id="edittransactionmodal-transactionType"
+                  name="transactionType"
                   value={form.transactionType}
                   onChange={(e) => setForm({ ...form, transactionType: e.target.value })}
                   className="w-full rounded-xl border-2 border-[#CFE0F5] bg-white px-3.5 py-2.5 text-sm font-bold text-[#072A44] focus:outline-none focus:border-[#0B5ED7] cursor-pointer"
@@ -200,10 +204,12 @@ export default function EditTransactionModal({
               </div>
 
               <div>
-                <label className="block text-xs font-bold uppercase tracking-wider text-[#072A44] mb-1.5">
+                <label htmlFor="edittransactionmodal-account" className="block text-xs font-bold uppercase tracking-wider text-[#072A44] mb-1.5">
                   Account <span className="text-rose-500">*</span>
                 </label>
                 <select
+                  id="edittransactionmodal-account"
+                  name="account"
                   value={form.account}
                   onChange={(e) => setForm({ ...form, account: e.target.value })}
                   className="w-full rounded-xl border-2 border-[#CFE0F5] bg-white px-3.5 py-2.5 text-sm font-bold text-[#072A44] focus:outline-none focus:border-[#0B5ED7] cursor-pointer"
@@ -216,10 +222,12 @@ export default function EditTransactionModal({
               </div>
 
               <div>
-                <label className="block text-xs font-bold uppercase tracking-wider text-[#072A44] mb-1.5">
+                <label htmlFor="edittransactionmodal-date" className="block text-xs font-bold uppercase tracking-wider text-[#072A44] mb-1.5">
                   Date <span className="text-rose-500">*</span>
                 </label>
                 <input
+                  id="edittransactionmodal-date"
+                  name="date"
                   type="date"
                   required
                   value={form.date}
@@ -230,7 +238,7 @@ export default function EditTransactionModal({
 
               {/* Role */}
               <div>
-                <label className="block text-xs font-bold uppercase tracking-wider text-[#072A44] mb-1.5 flex items-center justify-between">
+                <label htmlFor="edittransactionmodal-role" className="block text-xs font-bold uppercase tracking-wider text-[#072A44] mb-1.5 flex items-center justify-between">
                   <span>Role</span>
                   <span className={`inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full capitalize ${
                     form.role === 'staff'
@@ -243,12 +251,15 @@ export default function EditTransactionModal({
                   </span>
                 </label>
                 <select
+                  id="edittransactionmodal-role"
+                  name="role"
                   value={form.role}
-                  disabled={user?.role !== 'admin'}
+                  disabled={user?.role?.toLowerCase() !== 'admin'}
                   onChange={(e) => handleRoleChange(e.target.value)}
                   className="w-full rounded-xl border-2 border-[#CFE0F5] bg-white px-3.5 py-2.5 text-sm font-bold text-[#072A44] focus:outline-none focus:border-[#0B5ED7] cursor-pointer disabled:bg-slate-50 disabled:opacity-80"
                 >
                   <option value="admin">Administrator (Admin)</option>
+                  <option value="staff">Staff</option>
                   <option value="accountant">Accountant</option>
                 </select>
               </div>
@@ -273,10 +284,12 @@ export default function EditTransactionModal({
 
             <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2">
               <div>
-                <label className="block text-xs font-bold uppercase tracking-wider text-[#072A44] mb-1.5">
+                <label htmlFor="edittransactionmodal-amount" className="block text-xs font-bold uppercase tracking-wider text-[#072A44] mb-1.5">
                   Amount (Rs.) <span className="text-rose-500">*</span>
                 </label>
                 <input
+                  id="edittransactionmodal-amount"
+                  name="amount"
                   type="number"
                   min="0"
                   step="any"
@@ -288,36 +301,48 @@ export default function EditTransactionModal({
               </div>
 
               <div>
-                <label className="block text-xs font-bold uppercase tracking-wider text-[#072A44] mb-1.5">
-                  Reference
+                <label htmlFor="edittransactionmodal-reference" className="block text-xs font-bold uppercase tracking-wider text-[#072A44] mb-1.5">
+                  Reference <span className="text-rose-500">*</span>
                 </label>
                 <input
+                  id="edittransactionmodal-reference"
+                  name="reference"
+                  required
+                  aria-invalid={Boolean(fieldErrors.reference)}
+                  aria-describedby="edit-reference-error"
                   type="text"
                   value={form.reference}
                   onChange={(e) => setForm({ ...form, reference: e.target.value })}
                   placeholder="e.g. Sita Rai, Bill #102"
                   className="w-full rounded-xl border-2 border-[#CFE0F5] bg-white px-3.5 py-2.5 text-sm font-semibold text-[#072A44] focus:outline-none focus:border-[#0B5ED7]"
                 />
+                <p id="edit-reference-error" className="mt-1 text-xs text-rose-600">{fieldErrors.reference}</p>
               </div>
             </div>
 
             <div>
-              <label className="block text-xs font-bold uppercase tracking-wider text-[#072A44] mb-1.5">
-                Description / Remarks
+              <label htmlFor="edittransactionmodal-description" className="block text-xs font-bold uppercase tracking-wider text-[#072A44] mb-1.5">
+                Description / Remarks <span className="text-rose-500">*</span>
               </label>
-              <input
-                type="text"
+              <textarea
+                id="edittransactionmodal-description"
+                name="description"
+                required
+                aria-invalid={Boolean(fieldErrors.description)}
+                aria-describedby="edit-description-error"
+                rows="2"
                 value={form.description}
                 onChange={(e) => setForm({ ...form, description: e.target.value })}
                 placeholder="e.g. House wiring service payment"
                 className="w-full rounded-xl border-2 border-[#CFE0F5] bg-white px-3.5 py-2.5 text-sm font-semibold text-[#072A44] focus:outline-none focus:border-[#0B5ED7]"
               />
+              <p id="edit-description-error" className="mt-1 text-xs text-rose-600">{fieldErrors.description}</p>
             </div>
 
             <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2">
               <div>
                 <div className="flex items-center justify-between mb-1.5">
-                  <label className="block text-xs font-bold uppercase tracking-wider text-[#072A44]">
+                  <label htmlFor="edittransactionmodal-enteredBy" className="block text-xs font-bold uppercase tracking-wider text-[#072A44]">
                     Entered By
                   </label>
                   <span className="text-[10px] font-bold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full">
@@ -325,7 +350,10 @@ export default function EditTransactionModal({
                   </span>
                 </div>
                 <input
+                  id="edittransactionmodal-enteredBy"
+                  name="enteredBy"
                   type="text"
+                  required
                   value={form.enteredBy}
                   onChange={(e) => setForm({ ...form, enteredBy: e.target.value })}
                   placeholder="Admin / Staff / Accountant"
@@ -334,11 +362,15 @@ export default function EditTransactionModal({
               </div>
 
               <div>
-                <label className="block text-xs font-bold uppercase tracking-wider text-[#072A44] mb-1.5">
+                <label htmlFor="edittransactionmodal-entryTime" className="block text-xs font-bold uppercase tracking-wider text-[#072A44] mb-1.5">
                   Entry Time
                 </label>
                 <input
-                  type="text"
+                  id="edittransactionmodal-entryTime"
+                  name="entryTime"
+                  type="time"
+                  step="1"
+                  required
                   value={form.entryTime}
                   onChange={(e) => setForm({ ...form, entryTime: e.target.value })}
                   placeholder="07:00:00 AM"
@@ -362,6 +394,7 @@ export default function EditTransactionModal({
             <div className="flex items-center gap-2.5">
               <button
                 type="button"
+                disabled={saving || deleting}
                 onClick={onClose}
                 className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50 transition cursor-pointer"
               >
@@ -369,7 +402,7 @@ export default function EditTransactionModal({
               </button>
               <button
                 type="submit"
-                disabled={saving}
+                disabled={saving || deleting || isIncomplete}
                 className="rounded-xl bg-[#0B5ED7] px-5 py-2 text-xs font-bold text-white shadow-sm hover:bg-[#0A4FB3] transition cursor-pointer flex items-center gap-1.5"
               >
                 {saving ? 'Saving...' : 'Save Changes'}
@@ -378,6 +411,6 @@ export default function EditTransactionModal({
           </div>
         </form>
       </div>
-    </div>
+    </FormDialog>
   );
 }

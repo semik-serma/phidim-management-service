@@ -8,7 +8,6 @@ import {
   FiFileText,
   FiCreditCard,
   FiBookOpen,
-  FiPackage,
   FiUsers,
 } from 'react-icons/fi';
 import UserAvatar from './UserAvatar';
@@ -18,7 +17,6 @@ export const NAV_ITEMS = [
   { label: 'Bill Entry', href: '/bills', icon: FiFileText, roles: ['admin', 'staff'] },
   { label: 'Debit & Credit', href: '/transactions', icon: FiCreditCard, roles: ['admin', 'accountant'] },
   { label: 'Notes & Agenda', href: '/notes', icon: FiBookOpen, roles: ['admin', 'staff', 'accountant'] },
-  { label: 'Products & Inventory', href: '/products', icon: FiPackage, roles: ['admin', 'staff', 'accountant'] },
   { label: 'Users & Roles', href: '/users', icon: FiUsers, roles: ['admin'] },
 ];
 

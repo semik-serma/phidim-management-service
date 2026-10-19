@@ -25,7 +25,6 @@ import {
   FiDownload,
   FiShield,
   FiFilter,
-  FiPackage,
 } from 'react-icons/fi';
 import toast from 'react-hot-toast';
 import { useAuth } from '@/hooks/useAuth';
@@ -432,12 +431,6 @@ export default function BillsPage() {
             className="flex shrink-0 items-center gap-1.5 rounded-lg border border-[#CFE0F5] px-3 py-1.5 text-xs font-bold text-[#072A44]"
           >
             <FiBookOpen /> Notes & Agenda
-          </Link>
-          <Link
-            href="/products"
-            className="flex shrink-0 items-center gap-1.5 rounded-lg border border-[#CFE0F5] px-3 py-1.5 text-xs font-bold text-[#072A44]"
-          >
-            <FiPackage /> Products
           </Link>
         </div>
 

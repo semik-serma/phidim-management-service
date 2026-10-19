@@ -88,7 +88,7 @@ export default function CreateNoteModal({ isOpen, onClose, onSuccess }) {
             <input
               type="text"
               required
-              placeholder="e.g. Daily Store Operations & Inventory Check"
+              placeholder="e.g. Daily Service Operations & Follow-up"
               value={form.title}
               onChange={(e) => setForm({ ...form, title: e.target.value })}
               className="w-full rounded-xl border-2 border-[#CFE0F5] bg-white px-4 py-2.5 text-sm font-semibold text-[#072A44] placeholder:text-slate-400 focus:outline-none focus:border-[#0B5ED7] focus:ring-4 focus:ring-[#0B5ED7]/20 transition"

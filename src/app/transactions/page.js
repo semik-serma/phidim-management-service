@@ -21,7 +21,6 @@ import {
   FiCalendar,
   FiAlertCircle,
   FiBookOpen,
-  FiPackage,
 } from 'react-icons/fi';
 import { useAuth } from '@/hooks/useAuth';
 import toast from 'react-hot-toast';

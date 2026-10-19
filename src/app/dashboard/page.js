@@ -24,7 +24,6 @@ import {
   FiTrash2,
   FiUserCheck,
   FiUsers,
-  FiPackage,
 } from 'react-icons/fi';
 import toast from 'react-hot-toast';
 import { useAuth } from '@/hooks/useAuth';
@@ -361,13 +360,6 @@ export default function DashboardPage() {
               + Add Note
             </button>
 
-            <Link
-              href="/products"
-              className="rounded-xl border-2 border-[#072A44] bg-white px-3.5 py-2 text-sm font-bold text-[#072A44] hover:bg-slate-50 transition cursor-pointer flex items-center gap-1.5"
-              title="Manage Products, Inventory & Categories"
-            >
-              <FiPackage className="h-4 w-4 text-[#0B5ED7]" /> Inventory & Categories
-            </Link>
 
             <button
               type="button"
@@ -445,12 +437,6 @@ export default function DashboardPage() {
             className="flex shrink-0 items-center gap-1.5 rounded-lg border border-[#CFE0F5] px-3 py-1.5 text-xs font-bold text-[#072A44]"
           >
             <FiBookOpen /> Notes & Agenda
-          </Link>
-          <Link
-            href="/products"
-            className="flex shrink-0 items-center gap-1.5 rounded-lg border border-[#CFE0F5] px-3 py-1.5 text-xs font-bold text-[#072A44]"
-          >
-            <FiPackage /> Products
           </Link>
         </div>
 
